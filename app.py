@@ -3446,7 +3446,7 @@ data_label = "실시간 데이터" if st.session_state["live_result"] is not Non
 st.markdown(r"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
-:root{--g:#03c75a;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--soft:#f7f8fa}
+:root{--g:#ff6b00;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--soft:#f7f8fa}
 html,body,[class*="css"]{font-family:"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .stApp{background:#fff;color:var(--ink)}
 .block-container{max-width:1280px;padding:18px 24px 90px!important}
@@ -4984,4 +4984,5 @@ with st.expander("운영자 도구"):
     st.download_button("판매근거 CSV 양식 받기",product_csv_template(),"상품_판매근거_입력양식.csv","text/csv",width="stretch")
 
 render_mobile_nav()
+
 
