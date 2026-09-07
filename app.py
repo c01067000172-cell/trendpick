@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import os
 from datetime import date, timedelta, datetime
 
@@ -3471,7 +3471,7 @@ div[data-testid="stForm"]{
   position:relative;
 }
 div[data-testid="stForm"]::before{
-  content:"N";
+  content:"M";
   position:absolute;
   left:22px;
   top:31px;
@@ -3597,7 +3597,7 @@ div[data-baseweb="select"]>div,div[data-testid="stTextArea"] textarea,div[data-t
 def render_header():
     st.markdown("""
     <div class="topbar">
-      <a class="logo" href="?page=home" target="_self"><div class="logo-box">T</div>마스픽</a>
+      <a class="logo" href="?page=home" target="_self"><div class="logo-box">M</div>마스픽</a>
       <div class="top-actions">
         <a class="nav-btn" href="?page=pro" target="_self">광고문의</a>
         <a class="nav-btn" href="?page=login">로그인</a>
@@ -4984,3 +4984,4 @@ with st.expander("운영자 도구"):
     st.download_button("판매근거 CSV 양식 받기",product_csv_template(),"상품_판매근거_입력양식.csv","text/csv",width="stretch")
 
 render_mobile_nav()
+
