@@ -238,7 +238,7 @@ def product_csv_template() -> bytes:
 
 
 
-SALES_SOURCE_DIR = Path(__file__).resolve().parent / "sales_sources"
+SALES_SOURCE_DIR = Path(os.getenv("TRENDPICK_DATA_DIR", str(Path(__file__).resolve().parent / "sales_sources")))
 
 
 def load_product_evidence_path(csv_path: Path) -> pd.DataFrame:
@@ -1321,7 +1321,7 @@ def attach_verification_to_candidates(
 
 
 
-SNAPSHOT_DIR = Path(__file__).resolve().parent / "sales_sources"
+SNAPSHOT_DIR = Path(os.getenv("TRENDPICK_DATA_DIR", str(Path(__file__).resolve().parent / "sales_sources")))
 SNAPSHOT_PATH = SNAPSHOT_DIR / "candidate_snapshots.csv"
 
 
@@ -4980,3 +4980,4 @@ with st.expander("운영자 도구"):
     st.download_button("판매근거 CSV 양식 받기",product_csv_template(),"상품_판매근거_입력양식.csv","text/csv",width="stretch")
 
 render_mobile_nav()
+
