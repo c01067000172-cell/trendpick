@@ -3805,6 +3805,14 @@ if page == "search":
             st.error(f"검색 분석 오류: {exc}")
 
 elif page == "home":
+    history = load_candidate_history()
+    if isinstance(history, pd.DataFrame) and not history.empty and "수집버킷" in history.columns:
+        latest_bucket = sorted(history["수집버킷"].dropna().astype(str).unique())[-1]
+        latest = history[history["수집버킷"].astype(str) == latest_bucket].copy().sort_values(["검색어","현재순위"])
+        st.markdown("## 🔥 최신 자동수집 상품")
+        st.caption(f"자동수집 기준 {latest["수집시각"].max()} · {len(latest)}개 상품")
+        cols=[c for c in ["검색어","브랜드","상품명","플랫폼","현재순위","현재리뷰수","현재가격","할인율","상품URL"] if c in latest.columns]
+        st.dataframe(latest[cols],width="stretch",hide_index=True,column_config={"상품URL":st.column_config.LinkColumn("상품",display_text="보기")})
     try:
         live_df = fetch_keyword_trends(
             ("50000000", "50000001"),
@@ -4980,4 +4988,5 @@ with st.expander("운영자 도구"):
     st.download_button("판매근거 CSV 양식 받기",product_csv_template(),"상품_판매근거_입력양식.csv","text/csv",width="stretch")
 
 render_mobile_nav()
+
 
