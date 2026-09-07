@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import os
 from datetime import date, timedelta, datetime
 
@@ -2656,7 +2656,7 @@ def enrich_changes_from_snapshot(changes: pd.DataFrame) -> pd.DataFrame:
 def build_hourly_keyword_ranking() -> tuple[pd.DataFrame, dict]:
     """
     백그라운드 스냅샷의 최근 1시간 변화를 검색어 단위로 집계합니다.
-    네이버 검색량이 아니라 트렌드픽 자체 '1시간 상품 변화 신호'입니다.
+    네이버 검색량이 아니라 마스픽 자체 '1시간 상품 변화 신호'입니다.
     """
     history = load_candidate_history()
     changes, meta = build_exact_hourly_change_from_history(history)
@@ -2713,7 +2713,7 @@ def build_hourly_keyword_ranking() -> tuple[pd.DataFrame, dict]:
 def render_hourly_keyword_ranking():
     st.markdown(
         '<div class="page-title">🔥 1시간 급상승</div>'
-        '<div class="page-desc">트렌드픽이 1시간마다 수집한 상품 순위·리뷰 변화를 검색어 단위로 집계한 급상승 신호입니다.</div>',
+        '<div class="page-desc">마스픽이 1시간마다 수집한 상품 순위·리뷰 변화를 검색어 단위로 집계한 급상승 신호입니다.</div>',
         unsafe_allow_html=True
     )
 
@@ -3442,7 +3442,7 @@ data_label = "실시간 데이터" if st.session_state["live_result"] is not Non
 st.markdown(r"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
-:root{--g:#03c75a;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--soft:#f7f8fa}
+:root{--g:#ff6b00;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--soft:#f7f8fa}
 html,body,[class*="css"]{font-family:"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .stApp{background:#fff;color:var(--ink)}
 .block-container{max-width:1280px;padding:18px 24px 90px!important}
@@ -3467,7 +3467,7 @@ div[data-testid="stForm"]{
   position:relative;
 }
 div[data-testid="stForm"]::before{
-  content:"N";
+  content:"M";
   position:absolute;
   left:22px;
   top:31px;
@@ -3593,7 +3593,7 @@ div[data-baseweb="select"]>div,div[data-testid="stTextArea"] textarea,div[data-t
 def render_header():
     st.markdown("""
     <div class="topbar">
-      <a class="logo" href="?page=home" target="_self"><div class="logo-box">T</div>트렌드픽</a>
+      <a class="logo" href="?page=home" target="_self"><div class="logo-box">M</div>마스픽</a>
       <div class="top-actions">
         <a class="nav-btn" href="?page=pro" target="_self">광고문의</a>
         <a class="nav-btn" href="?page=login">로그인</a>
@@ -4913,7 +4913,7 @@ elif page == "alerts":
 # PRO
 # -------------------------
 elif page == "pro":
-    st.markdown('<div class="page-title">💎 트렌드픽 PRO</div><div class="page-desc">구독 화면 구조입니다. 실제 결제 연결 전 가격은 예시입니다.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="page-title">💎 마스픽 PRO</div><div class="page-desc">구독 화면 구조입니다. 실제 결제 연결 전 가격은 예시입니다.</div>',unsafe_allow_html=True)
     st.markdown("""
     <div class="price-grid">
       <div class="price-card"><div class="price-name">FREE</div><div class="price">₩0 <small>/월</small></div><div class="feature">급상승 일부</div><div class="feature">기본 상품 검색</div></div>
