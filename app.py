@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import os
 from datetime import date, timedelta, datetime
 
@@ -218,6 +218,16 @@ def score_and_classify(df: pd.DataFrame) -> pd.DataFrame:
     ranked["네이버 검색 트렌드"] = ranked.apply(lambda r: f"{r['이전지수']}→{r['최근지수']} ({r['검색증감률']:+.1f}%)", axis=1)
     ranked["URL"] = ranked["상품명"].map(lambda x: f"https://search.shopping.naver.com/search/all?query={requests.utils.quote(str(x))}")
     return ranked
+
+
+def score_purchase_signal(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    x = df.copy()
+    x['현재순위'] = pd.to_numeric(x['현재순위'], errors='coerce').fillna(999)
+    x['현재리뷰수'] = pd.to_numeric(x['현재리뷰수'], errors='coerce').fillna(0)
+    x['구매강도신호'] = ((1 / x['현재순위'].clip(lower=1)) * 50 + x['현재리뷰수'].clip(lower=0).apply(lambda v: min(50, (v ** 0.5) * 2))).round(1)
+    return x.sort_values(['구매강도신호','현재리뷰수'], ascending=False).reset_index(drop=True)
 
 
 def demo_data() -> pd.DataFrame:
@@ -3808,16 +3818,16 @@ elif page == "home":
     history = load_candidate_history()
     if isinstance(history, pd.DataFrame) and not history.empty and "수집버킷" in history.columns:
         latest_bucket = sorted(history["수집버킷"].dropna().astype(str).unique())[-1]
-        latest = history[history["수집버킷"].astype(str) == latest_bucket].copy().sort_values(["검색어","현재순위"])
-        st.markdown("## 🔥 최신 자동수집 상품")
-        st.caption(f"자동수집 기준 {latest["수집시각"].max()} · {len(latest)}개 상품")
-        cols=[c for c in ["검색어","브랜드","상품명","플랫폼","현재순위","현재리뷰수","현재가격","할인율","상품URL"] if c in latest.columns]
-        st.dataframe(latest[cols],width="stretch",hide_index=True,column_config={"상품URL":st.column_config.LinkColumn("상품",display_text="보기")})
+        latest = history[history["수집버킷"].astype(str) == latest_bucket].copy().sort_values(["검색어","현재순위"]).groupby("검색어", group_keys=False).head(3).reset_index(drop=True)
+        latest = score_purchase_signal(latest)
+        # 자동수집 데이터는 내부 분석용
+        # 수집정보는 화면에 노출하지 않음
+        cols=[c for c in ["검색어","브랜드","상품명","현재순위","현재리뷰수","현재가격","할인율","상품URL"] if c in latest.columns]
+        # 원본 수집 상품표는 내부 분석용으로만 사용
     try:
         live_df = fetch_keyword_trends(
             ("50000000", "50000001"),
-            ("여성 가디건", "여성 원피스", "와이드 데님", "남성 바람막이", "러닝 벨트",
-             "크로스백", "스니커즈", "기능성 티셔츠", "카고 팬츠")
+            tuple(latest["검색어"].dropna().astype(str).drop_duplicates().tolist())
         )
     except Exception as e:
         live_df = pd.DataFrame()
@@ -3916,49 +3926,15 @@ elif page == "home":
                     unsafe_allow_html=True
                 )
 
-        # 실제 판매근거 섹션
-        st.markdown("### 실제 판매근거")
-        st.info(
-            "현재 네이버 쇼핑인사이트는 검색·클릭 상대지수입니다. "
-            "실제 판매TOP은 판매수량·베스트순위·리뷰 증가 등 검증 가능한 판매근거가 연결된 뒤에만 표시합니다."
-        )
-
-        with st.expander("판매근거 CSV 연결", expanded=False):
-            st.caption("쇼핑몰 또는 제휴처에서 확보한 판매근거 CSV를 업로드하면 실제 상품 TOP을 선별합니다.")
-            sales_csv = st.file_uploader(
-                "판매근거 CSV",
-                type=["csv"],
-                key="home_sales_csv"
-            )
-            st.download_button(
-                "판매근거 CSV 양식 받기",
-                product_csv_template(),
-                "상품_판매근거_입력양식.csv",
-                "text/csv",
-                key="home_sales_template"
-            )
-
-            if sales_csv is not None:
-                try:
-                    sales = load_product_evidence(sales_csv)
-                    selected = select_real_products(sales, result)
-                    if selected.empty:
-                        st.warning("검증 가능한 판매근거가 있는 상품을 찾지 못했습니다.")
-                    else:
-                        st.success("판매근거가 확인된 상품을 선별했습니다.")
-                        final_view = selected[
-                            ["검색어", "상품명", "플랫폼", "분류", "등급", "판매근거", "검색증감률", "총점", "상품URL"]
-                        ]
-                        st.dataframe(
-                            final_view,
-                            width="stretch",
-                            hide_index=True,
-                            column_config={
-                                "상품URL": st.column_config.LinkColumn("상품", display_text="상품 보기")
-                            },
-                        )
-                except Exception as csv_exc:
-                    st.warning(f"판매자료 CSV를 읽지 못했습니다: {csv_exc}")
+        # 자동 구매강도 분석
+        st.markdown("### 지금 실제로 강한 상품")
+        purchase_view = match_trending_keywords_to_rank_products(result, latest, top_keywords=5, per_keyword=3)
+        if purchase_view.empty:
+            st.info("현재 검색 트렌드와 연결된 상품 신호가 없습니다.")
+        else:
+            purchase_view = purchase_view.drop(columns=["플랫폼"], errors="ignore")
+            st.caption("검색 흐름과 상품 순위·리뷰 신호를 교차 분석한 결과입니다. 실제 판매수량이 아닌 구매강도 신호입니다.")
+            st.dataframe(purchase_view, width="stretch", hide_index=True, column_config={"상품URL": st.column_config.LinkColumn("상품", display_text="상품 보기"), "검색증감률": st.column_config.NumberColumn("검색 상승", format="%.1f%%"), "랭킹강도": st.column_config.NumberColumn("구매강도", format="%.1f")})
 
     else:
         st.warning("쇼핑인사이트에서 표시할 실데이터가 없습니다.")
@@ -4988,5 +4964,6 @@ with st.expander("운영자 도구"):
     st.download_button("판매근거 CSV 양식 받기",product_csv_template(),"상품_판매근거_입력양식.csv","text/csv",width="stretch")
 
 render_mobile_nav()
+
 
 
