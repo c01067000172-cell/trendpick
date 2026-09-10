@@ -1,33 +1,42 @@
-"""Render startup preflight for JIN BIKE Supabase Storage.
+"""JIN BIKE Render boot-time Supabase verification.
 
-Python imports sitecustomize automatically at interpreter startup when this
-repository is on sys.path. This lets us verify the server credential without
-waiting for a Streamlit browser session. No secret value is ever logged.
+Loaded only when PYTHONPATH includes the repository. It deliberately runs only
+for the Streamlit server process, never for pip/build helper processes. The
+secret value itself is never logged.
 """
 
 import base64
 import json
 import os
+import sys
 import uuid
 
 
-def _key_kind(key: str) -> str:
+def _is_streamlit_process():
+    args = [str(x).lower() for x in getattr(sys, "orig_argv", sys.argv)]
+    return any("streamlit" in arg for arg in args)
+
+
+def _key_kind(key):
     if key.startswith("sb_secret_"):
-        return "sb_secret"
+        return "secret"
     if key.startswith("sb_publishable_"):
-        return "sb_publishable"
+        return "publishable"
     if key.startswith("eyJ"):
         try:
-            payload = key.split(".")[1]
-            payload += "=" * (-len(payload) % 4)
-            role = json.loads(base64.urlsafe_b64decode(payload).decode()).get("role")
-            return f"legacy_jwt:{role or 'unknown'}"
+            part = key.split(".")[1]
+            part += "=" * (-len(part) % 4)
+            role = json.loads(base64.urlsafe_b64decode(part).decode()).get("role")
+            return f"legacy:{role or 'unknown'}"
         except Exception:
-            return "legacy_jwt:unknown"
+            return "legacy:unknown"
     return "unknown"
 
 
-def _run_storage_preflight() -> None:
+def _verify():
+    if not _is_streamlit_process():
+        return
+
     url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     key = (
         os.getenv("SUPABASE_SECRET_KEY", "").strip()
@@ -36,74 +45,66 @@ def _run_storage_preflight() -> None:
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "product-images").strip() or "product-images"
 
     if not url or not key:
-        return
-
-    try:
-        import requests
-    except Exception as exc:
-        print(f"[JINBIKE-PREFLIGHT] requests import failed: {type(exc).__name__}", flush=True)
+        print("[JINBIKE-BOOT] FAIL missing SUPABASE_URL or server key", flush=True)
         return
 
     kind = _key_kind(key)
-    path = f"__healthcheck__/startup-{uuid.uuid4().hex[:12]}.txt"
-    object_url = f"{url}/storage/v1/object/{bucket}/{path}"
+    print(f"[JINBIKE-BOOT] key_type={kind} bucket={bucket}", flush=True)
 
-    variants = []
-    if key.startswith("eyJ"):
-        variants.append(("legacy-bearer", {"apikey": key, "Authorization": f"Bearer {key}"}))
-    else:
-        variants.append(("apikey-only", {"apikey": key}))
-        variants.append(("apikey-plus-bearer", {"apikey": key, "Authorization": f"Bearer {key}"}))
-
-    print(f"[JINBIKE-PREFLIGHT] key_kind={kind} bucket={bucket}", flush=True)
-
-    for label, auth_headers in variants:
-        headers = dict(auth_headers)
-        headers.update({"Content-Type": "text/plain", "Cache-Control": "no-store"})
-        try:
-            response = requests.post(
-                object_url,
-                headers=headers,
-                data=b"jinbike-storage-preflight",
-                timeout=20,
-            )
-        except Exception as exc:
-            print(
-                f"[JINBIKE-PREFLIGHT] {label} exception={type(exc).__name__}: {str(exc)[:200]}",
-                flush=True,
-            )
-            continue
-
-        safe_body = (response.text or "").replace("\n", " ")[:500]
+    if kind in ("publishable", "legacy:anon", "legacy:unknown", "unknown"):
         print(
-            f"[JINBIKE-PREFLIGHT] {label} upload_http={response.status_code} body={safe_body}",
+            "[JINBIKE-BOOT] FAIL server key is not a Secret/service_role credential",
+            flush=True,
+        )
+        return
+
+    try:
+        from supabase import create_client
+    except Exception as exc:
+        print(
+            f"[JINBIKE-BOOT] FAIL SDK import {type(exc).__name__}: {str(exc)[:300]}",
+            flush=True,
+        )
+        return
+
+    try:
+        client = create_client(url, key)
+        client.table("products").select("id").limit(1).execute()
+        print("[JINBIKE-BOOT] DB OK", flush=True)
+    except Exception as exc:
+        print(
+            f"[JINBIKE-BOOT] DB FAIL {type(exc).__name__}: {str(exc)[:600]}",
+            flush=True,
+        )
+        return
+
+    storage = client.storage.from_(bucket)
+    path = f"__healthcheck__/boot-{uuid.uuid4().hex[:12]}.txt"
+    try:
+        storage.upload(
+            path=path,
+            file=b"jinbike-storage-boot-check",
+            file_options={
+                "content-type": "text/plain",
+                "cache-control": "0",
+                "upsert": "false",
+            },
+        )
+        print("[JINBIKE-BOOT] STORAGE WRITE OK", flush=True)
+        storage.remove([path])
+        print("[JINBIKE-BOOT] STORAGE DELETE OK", flush=True)
+        print("[JINBIKE-BOOT] ALL OK", flush=True)
+    except Exception as exc:
+        print(
+            f"[JINBIKE-BOOT] STORAGE FAIL {type(exc).__name__}: {str(exc)[:800]}",
             flush=True,
         )
 
-        if 200 <= response.status_code < 300:
-            try:
-                delete_response = requests.delete(
-                    object_url,
-                    headers=auth_headers,
-                    timeout=20,
-                )
-                print(
-                    f"[JINBIKE-PREFLIGHT] {label} delete_http={delete_response.status_code} "
-                    f"body={(delete_response.text or '')[:300]}",
-                    flush=True,
-                )
-            except Exception as exc:
-                print(
-                    f"[JINBIKE-PREFLIGHT] {label} delete_exception={type(exc).__name__}: {str(exc)[:200]}",
-                    flush=True,
-                )
-            break
-
 
 try:
-    _run_storage_preflight()
+    _verify()
 except Exception as _exc:
     print(
-        f"[JINBIKE-PREFLIGHT] fatal={type(_exc).__name__}: {str(_exc)[:200]}",
+        f"[JINBIKE-BOOT] FATAL {type(_exc).__name__}: {str(_exc)[:500]}",
         flush=True,
     )
