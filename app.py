@@ -2,6 +2,8 @@ import streamlit as st
 import os
 import json
 import uuid
+import base64
+import mimetypes
 from pathlib import Path
 from html import escape
 
@@ -29,7 +31,13 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 PRODUCT_FILE = DATA_DIR / "products.json"
 
+IMAGE_DIR = DATA_DIR / "product_images"
+IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
 ADMIN_PASSWORD = os.getenv("MASPICK_ADMIN_PASSWORD", "")
+
+MASPICK_PHONE = os.getenv("MASPICK_PHONE", "").strip()
+MASPICK_KAKAO_URL = os.getenv("MASPICK_KAKAO_URL", "").strip()
 
 
 # =========================================================
@@ -169,6 +177,151 @@ def get_param(name, default=""):
         return value
     except Exception:
         return default
+
+
+def product_images(product):
+    images = product.get("images")
+
+    if isinstance(images, list) and images:
+        return images
+
+    image = str(product.get("image", "")).strip()
+
+    if image:
+        return [image]
+
+    return []
+
+
+def local_image_path(value):
+    value = str(value or "").strip()
+
+    if not value:
+        return None
+
+    if value.startswith("http://") or value.startswith("https://"):
+        return None
+
+    if value.startswith("data:"):
+        return None
+
+    p = Path(value)
+
+    if not p.is_absolute():
+        p = DATA_DIR / p
+
+    return p
+
+
+def image_src(value):
+    value = str(value or "").strip()
+
+    if not value:
+        return ""
+
+    if (
+        value.startswith("http://")
+        or value.startswith("https://")
+        or value.startswith("data:")
+    ):
+        return value
+
+    p = local_image_path(value)
+
+    if not p or not p.exists():
+        return ""
+
+    mime = mimetypes.guess_type(p.name)[0] or "image/jpeg"
+
+    try:
+        encoded = base64.b64encode(
+            p.read_bytes()
+        ).decode("ascii")
+
+        return f"data:{mime};base64,{encoded}"
+
+    except Exception:
+        return ""
+
+
+def main_image_src(product):
+    images = product_images(product)
+
+    if not images:
+        return ""
+
+    return image_src(images[0])
+
+
+def save_uploaded_images(uploaded_files, product_id):
+    saved = []
+
+    if not uploaded_files:
+        return saved
+
+    mime_ext = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+
+    for index, uploaded in enumerate(uploaded_files[:8], start=1):
+
+        ext = mime_ext.get(
+            getattr(uploaded, "type", ""),
+            ""
+        )
+
+        if not ext:
+            original_ext = Path(
+                getattr(uploaded, "name", "")
+            ).suffix.lower()
+
+            if original_ext in (
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".webp"
+            ):
+                ext = (
+                    ".jpg"
+                    if original_ext == ".jpeg"
+                    else original_ext
+                )
+            else:
+                ext = ".jpg"
+
+        filename = (
+            f"{product_id}_{index}_"
+            f"{uuid.uuid4().hex[:8]}{ext}"
+        )
+
+        target = IMAGE_DIR / filename
+
+        target.write_bytes(
+            uploaded.getbuffer()
+        )
+
+        saved.append(
+            f"product_images/{filename}"
+        )
+
+    return saved
+
+
+def delete_local_images(product):
+    for value in product_images(product):
+
+        p = local_image_path(value)
+
+        if not p:
+            continue
+
+        try:
+            if p.exists() and IMAGE_DIR in p.parents:
+                p.unlink()
+        except Exception:
+            pass
 
 
 PRODUCTS = load_products()
@@ -466,6 +619,59 @@ a {
     max-height:650px;
     object-fit:cover;
     border:1px solid #252525;
+    background:#111;
+}
+
+.detail-gallery {
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-top:9px;
+}
+
+.detail-thumb {
+    width:100%;
+    aspect-ratio:1 / 1;
+    object-fit:cover;
+    border:1px solid #292929;
+    background:#111;
+}
+
+.contact-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:22px;
+}
+
+.contact-btn {
+    min-height:52px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    font-weight:900;
+    border:1px solid #333;
+    color:#fff !important;
+    background:#151515;
+}
+
+.contact-btn:hover {
+    border-color:#ff6900;
+}
+
+.contact-btn.primary {
+    background:#ff6900;
+    border-color:#ff6900;
+}
+
+.contact-disabled {
+    margin-top:18px;
+    padding:15px;
+    border:1px solid #292929;
+    color:#777;
+    font-size:12px;
+    background:#101010;
 }
 
 .detail-brand {
@@ -706,7 +912,7 @@ def card_html(product):
 
                 <img
                     class="card-img"
-                    src="{escape(str(product.get('image','')))}"
+                    src="{escape(main_image_src(product), quote=True)}"
                 >
 
                 <div class="badge">
@@ -939,15 +1145,47 @@ def render_detail():
 
     with left:
 
-        st.markdown(
-            f"""
-            <img
-                class="detail-photo"
-                src="{escape(str(product.get('image','')))}"
-            >
-            """,
-            unsafe_allow_html=True
-        )
+        images = product_images(product)
+
+        if images:
+
+            first_src = image_src(images[0])
+
+            st.markdown(
+                f"""
+                <img
+                    class="detail-photo"
+                    src="{escape(first_src, quote=True)}"
+                >
+                """,
+                unsafe_allow_html=True
+            )
+
+            if len(images) > 1:
+
+                gallery = '<div class="detail-gallery">'
+
+                for image_value in images[1:8]:
+
+                    src = image_src(image_value)
+
+                    if src:
+
+                        gallery += (
+                            '<img class="detail-thumb" '
+                            f'src="{escape(src, quote=True)}">'
+                        )
+
+                gallery += "</div>"
+
+                st.markdown(
+                    gallery,
+                    unsafe_allow_html=True
+                )
+
+        else:
+
+            st.info("등록된 상품 사진이 없습니다.")
 
     with right:
 
@@ -1019,12 +1257,57 @@ def render_detail():
             )
         )
 
-        if st.button(
-            "구매 · 상담 문의",
-            use_container_width=True
-        ):
-            st.info(
-                "전화/카카오톡 문의 연결은 다음 단계에서 설정합니다."
+        contact_buttons = ""
+
+        if MASPICK_PHONE:
+
+            tel_number = "".join(
+                c for c in MASPICK_PHONE
+                if c.isdigit() or c == "+"
+            )
+
+            contact_buttons += f"""
+            <a
+                class="contact-btn primary"
+                href="tel:{escape(tel_number, quote=True)}"
+            >
+                ☎ 전화 문의
+            </a>
+            """
+
+        if MASPICK_KAKAO_URL:
+
+            contact_buttons += f"""
+            <a
+                class="contact-btn"
+                href="{escape(MASPICK_KAKAO_URL, quote=True)}"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                카카오톡 문의
+            </a>
+            """
+
+        if contact_buttons:
+
+            st.markdown(
+                f"""
+                <div class="contact-actions">
+                    {contact_buttons}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+
+            st.markdown(
+                """
+                <div class="contact-disabled">
+                    관리자에게 문의 연락처가 아직 설정되지 않았습니다.
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
 
@@ -1155,8 +1438,22 @@ def render_add_product():
             key="add_condition"
         )
 
+        uploaded_images = st.file_uploader(
+            "상품 사진 직접 업로드",
+            type=[
+                "jpg",
+                "jpeg",
+                "png",
+                "webp"
+            ],
+            accept_multiple_files=True,
+            help="최대 8장까지 등록할 수 있습니다.",
+            key="add_uploaded_images"
+        )
+
         image = st.text_input(
-            "대표 이미지 URL",
+            "또는 대표 이미지 URL",
+            placeholder="직접 업로드하면 비워두어도 됩니다.",
             key="add_image"
         )
 
@@ -1227,10 +1524,18 @@ def render_add_product():
 
             return
 
-        if not image.strip():
+        if len(uploaded_images or []) > 8:
 
             st.error(
-                "대표 이미지 URL을 입력해 주세요."
+                "상품 사진은 최대 8장까지 등록할 수 있습니다."
+            )
+
+            return
+
+        if not uploaded_images and not image.strip():
+
+            st.error(
+                "상품 사진을 직접 업로드하거나 이미지 URL을 입력해 주세요."
             )
 
             return
@@ -1241,8 +1546,18 @@ def render_add_product():
             "바이크 용품": "gear",
         }[product_type]
 
+        product_id = uuid.uuid4().hex[:12]
+
+        saved_images = save_uploaded_images(
+            uploaded_images,
+            product_id
+        )
+
+        if not saved_images and image.strip():
+            saved_images = [image.strip()]
+
         new_product = {
-            "id": uuid.uuid4().hex[:12],
+            "id": product_id,
             "type": type_code,
             "category": product_type,
             "subcategory": subcategory.strip(),
@@ -1251,7 +1566,12 @@ def render_add_product():
             "price": int(price),
             "condition": condition,
             "badge": badge.strip() or "NEW",
-            "image": image.strip(),
+            "image": (
+                saved_images[0]
+                if saved_images
+                else ""
+            ),
+            "images": saved_images,
             "description": description.strip(),
             "demo": False,
         }
@@ -1426,13 +1746,33 @@ def render_manage_products():
         key="edit_badge"
     )
 
+    current_images = product_images(product)
+
+    if current_images:
+
+        st.caption(
+            f"현재 등록 사진: {len(current_images)}장"
+        )
+
+    replacement_images = st.file_uploader(
+        "새 사진으로 전체 교체",
+        type=[
+            "jpg",
+            "jpeg",
+            "png",
+            "webp"
+        ],
+        accept_multiple_files=True,
+        help="새 사진을 선택하면 기존 사진 전체가 교체됩니다.",
+        key="edit_uploaded_images"
+    )
+
     edit_image = st.text_input(
-        "대표 이미지 URL",
-        value=str(
-            product.get(
-                "image",
-                ""
-            )
+        "또는 대표 이미지 URL",
+        value=(
+            str(current_images[0])
+            if current_images
+            else ""
         ),
         key="edit_image"
     )
@@ -1535,7 +1875,46 @@ def render_manage_products():
             product["subcategory"] = edit_subcategory.strip()
             product["condition"] = edit_condition
             product["badge"] = edit_badge.strip()
-            product["image"] = edit_image.strip()
+
+            if replacement_images:
+
+                if len(replacement_images) > 8:
+
+                    st.error(
+                        "상품 사진은 최대 8장까지 등록할 수 있습니다."
+                    )
+
+                    return
+
+                delete_local_images(product)
+
+                updated_images = save_uploaded_images(
+                    replacement_images,
+                    product.get("id", uuid.uuid4().hex[:12])
+                )
+
+                product["images"] = updated_images
+                product["image"] = (
+                    updated_images[0]
+                    if updated_images
+                    else ""
+                )
+
+            elif edit_image.strip():
+
+                if (
+                    not current_images
+                    or edit_image.strip() != str(current_images[0])
+                ):
+
+                    product["images"] = [
+                        edit_image.strip()
+                    ]
+
+                    product["image"] = (
+                        edit_image.strip()
+                    )
+
             product["description"] = edit_description.strip()
 
             for key, value in bike_values.items():
@@ -1570,6 +1949,8 @@ def render_manage_products():
                 )
 
             else:
+
+                delete_local_images(product)
 
                 PRODUCTS[:] = [
                     p for p in PRODUCTS
