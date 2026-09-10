@@ -938,6 +938,10 @@ div[data-testid="stSelectbox"] > div > div {
 .header .fake-search {grid-column:1; grid-row:1;}
 .header-right {grid-column:3; grid-row:1;}
 .logo {font-size:36px; letter-spacing:-1px; font-style:italic;}
+.logo {min-height:44px;}
+.logo::before {content:"JIN"; color:#ff6900; font-weight:1000;}
+.logo::after {content:" BIKE"; color:#fff; font-weight:1000;}
+.logo span {display:none;}
 .logo-small {font-size:12px; letter-spacing:2px; color:#aaa;}
 .topline {font-size:12px; color:#aaa;}
 .navbar {min-height:48px; gap:32px;}
@@ -1010,7 +1014,7 @@ safe_markdown("""
 
     <div>
         <a href="?page=home">
-            <div class="logo"><span>JIN</span> BIKE</div>
+            <div class="logo" translate="no" aria-label="JIN BIKE"></div>
             <div class="logo-small">MOTORCYCLE CULTURE</div>
         </a>
     </div>
