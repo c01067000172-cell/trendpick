@@ -960,6 +960,12 @@ div[data-testid="stSelectbox"] > div > div {
 .category-children {border-bottom:1px solid #242424; padding:4px 0;}
 .category-children a {border-bottom:0; padding-left:28px; color:#b9c7d4;}
 .category-children a::before {content:'ㄴ'; margin-right:7px; color:#777;}
+.category-node {border-bottom:1px solid #242424;}
+.category-node summary {list-style:none; padding:9px 8px; color:#bbb; cursor:pointer;}
+.category-node summary::-webkit-details-marker {display:none;}
+.category-node summary::after {content:'+'; float:right; color:#777;}
+.category-node[open] summary {color:#ff6900; background:#191919;}
+.category-node[open] summary::after {content:'−';}
 .catalog-results {min-width:0;}
 .grid {grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 12px;}
 .grid > a {min-width:0; color:inherit;}
@@ -1005,11 +1011,6 @@ a:focus-visible,summary:focus-visible {outline:2px solid #ff6900; outline-offset
 # =========================================================
 
 safe_markdown("""
-<div class="topline">
-    <span>JIN BIKE · MOTORCYCLE STORE</span>
-    <a href="?page=admin">관리자</a>
-</div>
-
 <div class="header">
 
     <div>
@@ -1019,15 +1020,6 @@ safe_markdown("""
         </a>
     </div>
 
-    <a class="fake-search" href="?page=shop&cat=전체상품">
-        <span>바이크, 의류, 용품 검색</span>
-        <span>⌕</span>
-    </a>
-
-    <div class="header-right">
-        JIN BIKE<br>중고 바이크 · 라이딩 기어
-    </div>
-
 </div>
 
 <div class="navbar">
@@ -1035,7 +1027,6 @@ safe_markdown("""
     <a href="?page=shop&cat=바이크 의류">바이크 의류</a>
     <a href="?page=shop&cat=바이크 용품">바이크 용품</a>
     <a href="?page=shop&cat=전체상품">전체상품</a>
-    <a class="sale" href="?page=admin">ADMIN</a>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1152,6 +1143,7 @@ def render_home():
 
 def render_shop():
 
+    is_home = get_param("page", "home") == "home"
     category = get_param("cat", "전체상품")
     subcategory = get_param("sub", "")
 
@@ -1163,18 +1155,19 @@ def render_shop():
             if p.get("category") == category
         ]
 
-    safe_markdown(
-        f"""
-        <div class="page-title">
-            {escape(category)}
-        </div>
+    if not is_home:
+        safe_markdown(
+            f"""
+            <div class="page-title">
+                {escape(category)}
+            </div>
 
-        <div class="page-subtitle">
-            HOME › SHOP › {escape(category)}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            <div class="page-subtitle">
+                HOME › SHOP › {escape(category)}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     category_copy = {
         "전체상품": "포천 진바이크 JIN BIKE에서 판매하는 중고 바이크, 바이크 의류, 헬멧과 라이딩 용품을 한눈에 확인하세요.",
@@ -1182,10 +1175,11 @@ def render_shop():
         "바이크 의류": "포천 진바이크에서 판매하는 바이크 의류입니다. 라이딩 자켓, 팬츠, 글러브, 헬멧과 보호장비를 상품별로 확인하세요.",
         "바이크 용품": "헬멧, 장갑, 보호장비 등 라이딩에 필요한 바이크 용품을 확인하세요.",
     }
-    safe_markdown(
-        f'<p class="category-copy">{escape(category_copy.get(category, category_copy["전체상품"]))}</p>',
-        unsafe_allow_html=True,
-    )
+    if not is_home:
+        safe_markdown(
+            f'<p class="category-copy">{escape(category_copy.get(category, category_copy["전체상품"]))}</p>',
+            unsafe_allow_html=True,
+        )
 
     c1, c2 = st.columns([3,1])
 
@@ -1263,16 +1257,17 @@ def render_shop():
     is_gear = category == "바이크 용품"
     sidebar = f'<details class="catalog-sidebar" {"open" if (is_wear or is_gear) else ""}><summary>카테고리</summary><nav aria-label="상품 분류">'
     for cat in ["전체상품", "중고 바이크", "바이크 의류", "바이크 용품"]:
-        sidebar += filter_link(cat, cat=cat)
-        if cat == "바이크 의류" and is_wear:
-            sidebar += '<div class="category-children">'
+        if cat == "바이크 의류":
+            sidebar += f'<details class="category-node" {"open" if is_wear else ""}><summary>바이크 의류</summary><div class="category-children">'
             for sub in ["상의", "하의", "자켓", "장갑", "신발"]:
                 sidebar += filter_link(sub, cat="바이크 의류", sub=sub)
-            sidebar += '</div>'
-        if cat == "바이크 용품" and is_gear:
-            sidebar += '<div class="category-children">'
+            sidebar += '</div></details>'
+        elif cat == "바이크 용품":
+            sidebar += f'<details class="category-node" {"open" if is_gear else ""}><summary>바이크 용품</summary><div class="category-children">'
             sidebar += filter_link("헬멧", cat="바이크 용품", sub="헬멧")
-            sidebar += '</div>'
+            sidebar += '</div></details>'
+        else:
+            sidebar += filter_link(cat, cat=cat)
     sidebar += '</nav></details>'
     results = '<div class="grid">' + ''.join(card_html(p) for p in items) + '</div>'
     if not items:
@@ -1558,6 +1553,18 @@ def render_add_product():
         key="add_type"
     )
 
+    category_options = {
+        "중고 바이크": [
+            "크루저", "투어링", "스포츠", "네이키드", "스쿠터", "기타"
+        ],
+        "바이크 의류": [
+            "상의", "하의", "자켓", "장갑", "신발"
+        ],
+        "바이크 용품": [
+            "헬멧", "기타"
+        ],
+    }
+
     c1, c2 = st.columns(2)
 
     with c1:
@@ -1579,10 +1586,10 @@ def render_add_product():
             key="add_price"
         )
 
-        subcategory = st.text_input(
-            "세부 카테고리",
-            placeholder="예: 투어링 / 재킷 / 헬멧",
-            key="add_subcategory"
+        subcategory = st.selectbox(
+            "카테고리",
+            category_options[product_type],
+            key=f"add_subcategory_{product_type}"
         )
 
         badge = st.text_input(
