@@ -402,7 +402,7 @@ safe_markdown("""
 }
 
 html, body, .stApp {
-    background:#080808;
+    background:#FFFFFF;
     color:#f4f4f4;
 }
 
@@ -411,7 +411,7 @@ html, body, .stApp {
         radial-gradient(
             circle at top,
             #171717 0,
-            #080808 520px
+            #FFFFFF 520px
         );
 }
 
