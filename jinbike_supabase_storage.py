@@ -123,7 +123,22 @@ def install(namespace):
             timeout=30,
             **kwargs,
         )
-        response.raise_for_status()
+
+        if not response.ok:
+            try:
+                detail = response.text.strip()
+            except Exception:
+                detail = ""
+            if len(detail) > 1200:
+                detail = detail[:1200] + "..."
+            message = (
+                f"Supabase 요청 실패: HTTP {response.status_code} "
+                f"{method} {url}"
+            )
+            if detail:
+                message += f" | 응답: {detail}"
+            raise requests.HTTPError(message, response=response)
+
         return response
 
     def storage_path_from_url(value):
@@ -275,10 +290,16 @@ def install(namespace):
             filename = f"{index}_{uuid.uuid4().hex[:12]}{ext}"
             object_path = f"products/{product_id}/{filename}"
 
+            # Fresh UUID paths never overwrite an existing object, so do not
+            # send x-upsert. This avoids current Storage API regressions where
+            # x-upsert can cause a misleading 400/authorization failure.
             request(
                 "POST",
                 f"{storage_base}/{bucket}/{object_path}",
-                headers={"Content-Type": mime, "x-upsert": "false"},
+                headers={
+                    "Content-Type": mime,
+                    "Cache-Control": "max-age=3600",
+                },
                 data=uploaded.getvalue(),
             )
 
