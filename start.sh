@@ -12,7 +12,7 @@ printf '%s\n' \
   '  <url><loc>https://www.maspick.co.kr/?page=shop&amp;cat=%EB%B0%94%EC%9D%B4%ED%81%AC%20%EC%9A%A9%ED%92%88</loc></url>' \
   '</urlset>' > static/sitemap.xml
 
-exec streamlit run app.py \
+exec streamlit run supabase_runner.py \
   --server.address=0.0.0.0 \
   --server.port="${PORT:-8501}" \
   --server.headless=true \
