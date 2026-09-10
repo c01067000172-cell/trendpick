@@ -7,9 +7,47 @@ import mimetypes
 from pathlib import Path
 from html import escape
 from textwrap import dedent
+from urllib.parse import urlencode
+
+SITE_URL = "https://www.maspick.co.kr"
+STORE_NAME = "포천 진바이크 JIN BIKE"
+STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
+
+
+def initial_query_value(name, default=""):
+    value = st.query_params.get(name, default)
+    return value[0] if isinstance(value, list) else value
+
+
+def seo_page_info():
+    page = initial_query_value("page", "home")
+    category = initial_query_value("cat", "전체상품")
+
+    if page == "shop" and category == "바이크 의류":
+        return (
+            "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 진바이크",
+            "포천 진바이크 JIN BIKE의 바이크 의류. 라이딩 자켓, 팬츠, 글러브, 헬멧과 보호장비를 확인하세요.",
+        )
+    if page == "shop" and category == "중고 바이크":
+        return (
+            "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | 진바이크",
+            "포천 진바이크 JIN BIKE에서 판매하는 중고 오토바이와 할리데이비슨 매물을 확인하세요.",
+        )
+    if page == "shop" and category == "바이크 용품":
+        return (
+            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 진바이크",
+            "포천 진바이크 JIN BIKE의 헬멧, 장갑, 라이딩 기어와 바이크 용품을 확인하세요.",
+        )
+    return (
+        "포천 진바이크 JIN BIKE | 중고 오토바이·바이크 의류·라이딩 용품",
+        "포천 진바이크 JIN BIKE. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하고 구매 상담을 받아보세요.",
+    )
+
+
+SEO_TITLE, SEO_DESCRIPTION = seo_page_info()
 
 st.set_page_config(
-    page_title="MASPICK | Motorcycle Store",
+    page_title=SEO_TITLE,
     page_icon="🏍️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -893,6 +931,67 @@ div[data-testid="stSelectbox"] > div > div {
     }
 }
 
+/* Compact, product-first JIN BIKE storefront. */
+.stApp {background:#080808; color:#f4f4f4;}
+.header {min-height:90px; grid-template-columns:1fr 1fr 1fr;}
+.header > div:first-child {grid-column:2; grid-row:1; text-align:center;}
+.header .fake-search {grid-column:1; grid-row:1;}
+.header-right {grid-column:3; grid-row:1;}
+.logo {font-size:36px; letter-spacing:-1px; font-style:italic;}
+.logo-small {font-size:12px; letter-spacing:2px; color:#aaa;}
+.topline {font-size:12px; color:#aaa;}
+.navbar {min-height:48px; gap:32px;}
+.hero {height:230px; margin-top:18px; padding:28px; position:relative;}
+.hero-title {font-size:36px;}
+.hero-eyebrow {font-size:14px; letter-spacing:2px;}
+.hero::after {content:'JIN BIKE'; position:absolute; right:24px; top:24px; font-weight:900; font-style:italic; color:white;}
+.hero-copy {font-size:14px;}
+.page-title {margin-top:22px; font-size:22px;}
+.page-subtitle {font-size:14px; color:#aaa; margin-bottom:16px;}
+.category-copy {max-width:780px; margin:0 0 22px; color:#c7c7c7; font-size:15px; line-height:1.8;}
+.catalog-layout {display:grid; grid-template-columns:180px minmax(0,1fr); gap:24px; margin-top:18px;}
+.catalog-sidebar {border-top:2px solid #eee; font-size:14px;}
+.catalog-sidebar summary {padding:16px 0; font-weight:800; cursor:pointer;}
+.catalog-sidebar a {display:block; color:#bbb; padding:9px 8px; border-bottom:1px solid #242424; overflow-wrap:anywhere;}
+.catalog-sidebar a:hover,.catalog-sidebar a.active {color:#ff6900; background:#191919;}
+.catalog-sidebar h3 {font-size:14px; margin:26px 0 12px; color:#fff;}
+.catalog-results {min-width:0;}
+.grid {grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 12px;}
+.grid > a {min-width:0; color:inherit;}
+.card {background:transparent; border:0;}
+.card:hover {transform:none;}
+.card-imgbox {background:#eee; border:1px solid #292929;}
+.card-img {object-fit:contain;}
+.card-body {padding:12px 2px; text-align:center;}
+.card-brand {font-size:12px; color:#bdbdbd; letter-spacing:0;}
+.card-name {font-size:14px; font-weight:600; white-space:normal; line-height:1.5; min-height:42px;}
+.card-info {font-size:12px; color:#aaa; line-height:1.5;}
+.card-price {font-size:16px; margin-top:9px;}
+.badge,.demo {font-size:12px; padding:4px 6px; top:6px;}
+.badge {left:6px;}.demo {right:6px;}
+a:focus-visible,summary:focus-visible {outline:2px solid #ff6900; outline-offset:3px;}
+@media(max-width:1100px) {
+ .catalog-layout {grid-template-columns:150px minmax(0,1fr); gap:16px;}
+ .grid {grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+@media(max-width:600px) {
+ .block-container {padding-left:14px !important; padding-right:14px !important;}
+ .header {grid-template-columns:1fr 1fr; gap:12px; padding:16px 0;}
+ .header > div:first-child {grid-column:1; text-align:left;}
+ .header-right {grid-column:2; display:block; font-size:14px;}
+ .header .fake-search {grid-column:1 / -1; grid-row:2; display:flex;}
+ .logo {font-size:30px;}.navbar {justify-content:flex-start; gap:24px;}
+ .hero {height:200px; padding:20px;}.hero-title {font-size:28px;}
+ .hero::after {font-size:12px; right:14px; top:14px;}
+ .hero-eyebrow {font-size:12px;}.hero-copy {max-width:240px;}
+ .catalog-layout {grid-template-columns:1fr;}
+ .catalog-sidebar:not([open]) > :not(summary) {display:none;}
+ .grid {grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 10px;}
+}
+@media(min-width:601px) {
+ .catalog-sidebar::details-content {content-visibility:visible; display:block;}
+ .catalog-sidebar:not([open]) > :not(summary) {display:block;}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -903,28 +1002,26 @@ div[data-testid="stSelectbox"] > div > div {
 
 safe_markdown("""
 <div class="topline">
-    <span>LOGIN</span>
-    <span>JOIN</span>
-    <span>MY PAGE</span>
-    <span>CART 0</span>
+    <span>JIN BIKE · MOTORCYCLE STORE</span>
+    <a href="?page=admin">관리자</a>
 </div>
 
 <div class="header">
 
     <div>
         <a href="?page=home">
-            <div class="logo"><span>M</span>ASPICK</div>
+            <div class="logo"><span>JIN</span> BIKE</div>
             <div class="logo-small">MOTORCYCLE CULTURE</div>
         </a>
     </div>
 
-    <div class="fake-search">
+    <a class="fake-search" href="?page=shop&cat=전체상품">
         <span>바이크, 의류, 용품 검색</span>
         <span>⌕</span>
-    </div>
+    </a>
 
     <div class="header-right">
-        ♡ WISH &nbsp;&nbsp; ◎ MY &nbsp;&nbsp; ▣ CART
+        JIN BIKE<br>중고 바이크 · 라이딩 기어
     </div>
 
 </div>
@@ -967,6 +1064,8 @@ def card_html(product):
 
                 <img
                     class="card-img"
+                    loading="lazy"
+                    alt="{escape(str(product.get('name', '상품')), quote=True)}"
                     src="{escape(main_image_src(product), quote=True)}"
                 >
 
@@ -1047,7 +1146,7 @@ def render_home():
         <div>
 
             <div class="hero-eyebrow">
-                MASPICK MOTORCYCLE STORE
+                JIN BIKE
             </div>
 
             <div class="hero-title">
@@ -1071,30 +1170,9 @@ def render_home():
 
     </div>
 
-    <div class="home-section-title">
-        USED MOTORCYCLE
-    </div>
     """, unsafe_allow_html=True)
 
-    render_grid(
-        [
-            p for p in PRODUCTS
-            if p.get("category") == "중고 바이크"
-        ][:8]
-    )
-
-    safe_markdown("""
-    <div class="home-section-title">
-        RIDING WEAR & GEAR
-    </div>
-    """, unsafe_allow_html=True)
-
-    render_grid(
-        [
-            p for p in PRODUCTS
-            if p.get("category") != "중고 바이크"
-        ][:8]
-    )
+    render_shop()
 
 
 # =========================================================
@@ -1104,6 +1182,8 @@ def render_home():
 def render_shop():
 
     category = get_param("cat", "전체상품")
+    brand = get_param("brand", "")
+    subcategory = get_param("sub", "")
 
     if category == "전체상품":
         items = PRODUCTS.copy()
@@ -1124,6 +1204,17 @@ def render_shop():
         </div>
         """,
         unsafe_allow_html=True
+    )
+
+    category_copy = {
+        "전체상품": "포천 진바이크 JIN BIKE에서 판매하는 중고 바이크, 바이크 의류, 헬멧과 라이딩 용품을 한눈에 확인하세요.",
+        "중고 바이크": "포천 진바이크의 중고 오토바이 매물입니다. 연식, 주행거리, 배기량과 상세 상태를 확인한 뒤 상담받을 수 있습니다.",
+        "바이크 의류": "포천 진바이크에서 판매하는 바이크 의류입니다. 라이딩 자켓, 팬츠, 글러브, 헬멧과 보호장비를 상품별로 확인하세요.",
+        "바이크 용품": "헬멧, 장갑, 보호장비 등 라이딩에 필요한 바이크 용품을 확인하세요.",
+    }
+    safe_markdown(
+        f'<p class="category-copy">{escape(category_copy.get(category, category_copy["전체상품"]))}</p>',
+        unsafe_allow_html=True,
     )
 
     c1, c2 = st.columns([3,1])
@@ -1147,6 +1238,11 @@ def render_shop():
             ],
             label_visibility="collapsed",
         )
+
+    if brand:
+        items = [p for p in items if p.get("brand") == brand]
+    if subcategory:
+        items = [p for p in items if p.get("subcategory") == subcategory]
 
     if keyword:
 
@@ -1183,7 +1279,29 @@ def render_shop():
         f"총 {len(items)}개의 상품"
     )
 
-    render_grid(items)
+    def filter_link(label, **params):
+        url = "?" + urlencode({"page": "shop", **params})
+        active = (params.get("cat") == category and
+                  params.get("brand", "") == brand and
+                  params.get("sub", "") == subcategory)
+        return f'<a class="{"active" if active else ""}" href="{escape(url, quote=True)}">{escape(str(label))}</a>'
+
+    sidebar = '<details class="catalog-sidebar"><summary>카테고리 · 브랜드</summary><nav aria-label="상품 분류">'
+    for cat in ["전체상품", "중고 바이크", "바이크 의류", "바이크 용품"]:
+        sidebar += filter_link(cat, cat=cat)
+    category_items = [p for p in PRODUCTS if category == "전체상품" or p.get("category") == category]
+    sidebar += '<h3>세부 분류</h3>'
+    for sub in sorted({p.get("subcategory", "") for p in category_items} - {""}):
+        sidebar += filter_link(sub, cat=category, sub=sub)
+    sidebar += '<h3>BRANDS</h3>'
+    for name in sorted({p.get("brand", "") for p in category_items} - {""}):
+        sidebar += filter_link(name, cat=category, brand=name)
+    sidebar += filter_link("필터 초기화", cat="전체상품")
+    sidebar += '</nav></details>'
+    results = '<div class="grid">' + ''.join(card_html(p) for p in items) + '</div>'
+    if not items:
+        results = '<p role="status">조건에 맞는 상품이 없습니다. 필터를 초기화해 주세요.</p>'
+    safe_markdown('<div class="catalog-layout">' + sidebar + '<section class="catalog-results" aria-label="상품 목록">' + results + '</section></div>', unsafe_allow_html=True)
 
 
 # =========================================================
@@ -1391,7 +1509,7 @@ def admin_login():
     safe_markdown(
         """
         <div class="page-title">
-            MASPICK ADMIN
+            JIN BIKE ADMIN
         </div>
 
         <div class="page-subtitle">
@@ -2118,13 +2236,16 @@ else:
 safe_markdown("""
 <div class="footer-block">
 
-    MASPICK MOTORCYCLE STORE<br>
+    {STORE_NAME}<br>
+    {STORE_ADDRESS}<br>
+    중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
 
     USED MOTORCYCLE · RIDING WEAR · PARTS & GEAR<br>
 
     경기 포천 · 바이크 매물 및 상품 문의<br><br>
 
-    © MASPICK. ALL RIGHTS RESERVED.
+    © JIN BIKE. ALL RIGHTS RESERVED.<br>
+    <a href="/app/static/sitemap.xml">사이트맵</a>
 
 </div>
 """, unsafe_allow_html=True)
