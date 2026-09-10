@@ -1237,11 +1237,11 @@ def render_shop():
     is_wear = category == "바이크 의류"
     is_gear = category == "바이크 용품"
 
-sidebar = (
-    f'<details class="catalog-sidebar" open>'
-    f'<summary>카테고리</summary>'
-    f'<nav aria-label="상품 분류">'
-)
+    sidebar = (
+        f'<details class="catalog-sidebar" open>'
+        f'<summary>카테고리</summary>'
+        f'<nav aria-label="상품 분류">'
+    )
 
     for cat in [
         "전체상품",
