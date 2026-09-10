@@ -93,7 +93,7 @@ IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 BANNER_FILE = (
     Path(__file__).parent
     / "assets"
-    / "jinbike_banner.jpg"
+    / "jinbike_banner.png"
 )
 
 ADMIN_PASSWORD = os.getenv("MASPICK_ADMIN_PASSWORD", "")
@@ -513,11 +513,13 @@ a {
 }
 
 .hero {
-    height:230px;
-    margin-top:18px;
+    width:100%;
+    height:clamp(320px, 31vw, 520px);
+    margin-top:28px;
     border:1px solid #222;
+    background-repeat:no-repeat;
     background-size:cover;
-    background-position:center center;
+    background-position:center 28%;
 }
 
 .catalog-layout {
@@ -922,6 +924,14 @@ summary:focus-visible {
 @media(min-width:601px) {
     .catalog-sidebar:not([open]) > :not(summary) {
         display:block;
+    }
+}
+
+
+@media (max-width: 768px) {
+    .hero {
+        height:clamp(230px, 58vw, 360px);
+        background-position:center 24%;
     }
 }
 
