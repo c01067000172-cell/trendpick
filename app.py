@@ -6,6 +6,7 @@ import base64
 import mimetypes
 from pathlib import Path
 from html import escape
+from textwrap import dedent
 
 st.set_page_config(
     page_title="MASPICK | Motorcycle Store",
@@ -13,6 +14,21 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+
+_original_markdown = st.markdown
+
+
+def safe_markdown(body, *args, **kwargs):
+    if isinstance(body, str):
+        body = dedent(body).strip()
+
+    return _original_markdown(
+        body,
+        *args,
+        **kwargs
+    )
+
 
 # =========================================================
 # 저장소
@@ -33,6 +49,13 @@ PRODUCT_FILE = DATA_DIR / "products.json"
 
 IMAGE_DIR = DATA_DIR / "product_images"
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+BANNER_FILE = (
+    Path(__file__).parent
+    / "assets"
+    / "jinbike_banner.jpg"
+)
 
 ADMIN_PASSWORD = os.getenv("MASPICK_ADMIN_PASSWORD", "")
 
@@ -324,6 +347,33 @@ def delete_local_images(product):
             pass
 
 
+def banner_image_src():
+
+    if not BANNER_FILE.exists():
+        return ""
+
+    try:
+
+        mime = (
+            mimetypes.guess_type(
+                BANNER_FILE.name
+            )[0]
+            or "image/jpeg"
+        )
+
+        encoded = base64.b64encode(
+            BANNER_FILE.read_bytes()
+        ).decode("ascii")
+
+        return (
+            f"data:{mime};base64,"
+            f"{encoded}"
+        )
+
+    except Exception:
+        return ""
+
+
 PRODUCTS = load_products()
 
 
@@ -331,7 +381,7 @@ PRODUCTS = load_products()
 # CSS
 # =========================================================
 
-st.markdown("""
+safe_markdown("""
 <style>
 
 #MainMenu, footer, header {
@@ -463,7 +513,7 @@ a {
             rgba(0,0,0,.82) 38%,
             rgba(0,0,0,.22) 100%
         ),
-        url("https://images.unsplash.com/photo-1558980394-4c7c9299fe96?auto=format&fit=crop&w=1800&q=85");
+        none;
     background-size:cover;
     background-position:center;
     display:flex;
@@ -846,7 +896,7 @@ div[data-testid="stSelectbox"] > div > div {
 # 헤더
 # =========================================================
 
-st.markdown("""
+safe_markdown("""
 <div class="topline">
     <span>LOGIN</span>
     <span>JOIN</span>
@@ -904,7 +954,7 @@ def card_html(product):
     if product.get("demo"):
         demo_badge = '<div class="demo">DEMO</div>'
 
-    return f"""
+    return dedent(f"""
     <a href="?page=detail&id={escape(str(product.get('id','')))}">
         <div class="card">
 
@@ -945,7 +995,7 @@ def card_html(product):
 
         </div>
     </a>
-    """
+    """).strip()
 
 
 def render_grid(products):
@@ -961,7 +1011,7 @@ def render_grid(products):
 
     html += "</div>"
 
-    st.markdown(html, unsafe_allow_html=True)
+    safe_markdown(html, unsafe_allow_html=True)
 
 
 # =========================================================
@@ -970,8 +1020,24 @@ def render_grid(products):
 
 def render_home():
 
-    st.markdown("""
-    <div class="hero">
+    banner = banner_image_src()
+
+    safe_markdown("""
+    <div
+        class="hero"
+        style="
+            background-image:
+                linear-gradient(
+                    90deg,
+                    rgba(0,0,0,.82) 0%,
+                    rgba(0,0,0,.48) 40%,
+                    rgba(0,0,0,.08) 100%
+                ),
+                url('{escape(banner, quote=True)}');
+            background-position:center center;
+            background-size:cover;
+        "
+    >
 
         <div>
 
@@ -1012,7 +1078,7 @@ def render_home():
         ][:8]
     )
 
-    st.markdown("""
+    safe_markdown("""
     <div class="home-section-title">
         RIDING WEAR & GEAR
     </div>
@@ -1042,7 +1108,7 @@ def render_shop():
             if p.get("category") == category
         ]
 
-    st.markdown(
+    safe_markdown(
         f"""
         <div class="page-title">
             {escape(category)}
@@ -1133,7 +1199,7 @@ def render_detail():
         st.error("상품을 찾을 수 없습니다.")
         return
 
-    st.markdown(
+    safe_markdown(
         '<div class="page-title">PRODUCT DETAIL</div>',
         unsafe_allow_html=True
     )
@@ -1151,7 +1217,7 @@ def render_detail():
 
             first_src = image_src(images[0])
 
-            st.markdown(
+            safe_markdown(
                 f"""
                 <img
                     class="detail-photo"
@@ -1178,7 +1244,7 @@ def render_detail():
 
                 gallery += "</div>"
 
-                st.markdown(
+                safe_markdown(
                     gallery,
                     unsafe_allow_html=True
                 )
@@ -1189,7 +1255,7 @@ def render_detail():
 
     with right:
 
-        st.markdown(
+        safe_markdown(
             f"""
             <div class="detail-brand">
                 {escape(str(product.get('brand','')))}
@@ -1244,7 +1310,7 @@ def render_detail():
             </div>
             """
 
-        st.markdown(
+        safe_markdown(
             html,
             unsafe_allow_html=True
         )
@@ -1290,7 +1356,7 @@ def render_detail():
 
         if contact_buttons:
 
-            st.markdown(
+            safe_markdown(
                 f"""
                 <div class="contact-actions">
                     {contact_buttons}
@@ -1301,7 +1367,7 @@ def render_detail():
 
         else:
 
-            st.markdown(
+            safe_markdown(
                 """
                 <div class="contact-disabled">
                     관리자에게 문의 연락처가 아직 설정되지 않았습니다.
@@ -1317,7 +1383,7 @@ def render_detail():
 
 def admin_login():
 
-    st.markdown(
+    safe_markdown(
         """
         <div class="page-title">
             MASPICK ADMIN
@@ -1471,7 +1537,7 @@ def render_add_product():
 
     if product_type == "중고 바이크":
 
-        st.markdown("#### 중고 바이크 정보")
+        safe_markdown("#### 중고 바이크 정보")
 
         b1, b2, b3 = st.columns(3)
 
@@ -1638,7 +1704,7 @@ def render_manage_products():
     if not product:
         return
 
-    st.markdown(
+    safe_markdown(
         f"""
         <div class="admin-product">
 
@@ -1793,7 +1859,7 @@ def render_manage_products():
 
     if product.get("type") == "bike":
 
-        st.markdown(
+        safe_markdown(
             "#### 차량 정보"
         )
 
@@ -2044,7 +2110,7 @@ else:
 # FOOTER
 # =========================================================
 
-st.markdown("""
+safe_markdown("""
 <div class="footer-block">
 
     MASPICK MOTORCYCLE STORE<br>
