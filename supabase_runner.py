@@ -1,10 +1,5 @@
 from pathlib import Path
 
-import jinbike_storage_auth_patch as _jinbike_storage_auth_patch
-
-
-_jinbike_storage_auth_patch.install()
-_jinbike_storage_auth_patch.probe_storage()
 
 APP_FILE = Path(__file__).with_name("app.py")
 SOURCE = APP_FILE.read_text(encoding="utf-8")
@@ -13,7 +8,7 @@ LOAD_TARGET = "PRODUCTS = load_products()"
 LOAD_INJECTION = """import jinbike_supabase_storage as _jinbike_supabase_storage\n_jinbike_supabase_storage.install(globals())\n\nPRODUCTS = load_products()"""
 
 STATUS_TARGET = 'f"관리자 로그인 상태 · 저장 위치: {PRODUCT_FILE}"'
-STATUS_REPLACEMENT = 'f"관리자 로그인 상태 · 저장 위치: {\'Supabase DB + Storage\' if globals().get(\'SUPABASE_ENABLED\') else PRODUCT_FILE}"'
+STATUS_REPLACEMENT = 'f"관리자 로그인 상태 · 저장 위치: {globals().get(\'SUPABASE_STATUS\', PRODUCT_FILE)}"'
 
 if LOAD_TARGET not in SOURCE:
     raise RuntimeError("Supabase storage injection point was not found in app.py")
