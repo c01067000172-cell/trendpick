@@ -23,6 +23,11 @@ def safe_markdown(body, *args, **kwargs):
     if isinstance(body, str):
         body = dedent(body).strip()
 
+    # Render HTML directly: Markdown treats indented blocks after blank
+    # lines as code, even when unsafe_allow_html is enabled.
+    if kwargs.get("unsafe_allow_html"):
+        return st.html(body)
+
     return _original_markdown(
         body,
         *args,
@@ -1022,7 +1027,7 @@ def render_home():
 
     banner = banner_image_src()
 
-    safe_markdown("""
+    safe_markdown(f"""
     <div
         class="hero"
         style="
