@@ -13,6 +13,9 @@ SITE_URL = "https://www.maspick.co.kr"
 STORE_NAME = "포천 진바이크 JIN BIKE"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 
+# =========================================================
+# PAGE / SEO
+# =========================================================
 
 def initial_query_value(name, default=""):
     value = st.query_params.get(name, default)
@@ -26,21 +29,24 @@ def seo_page_info():
     if page == "shop" and category == "바이크 의류":
         return (
             "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 진바이크",
-            "포천 진바이크 JIN BIKE의 바이크 의류. 라이딩 자켓, 팬츠, 글러브, 헬멧과 보호장비를 확인하세요.",
+            "포천 진바이크 JIN BIKE의 바이크 의류를 확인하세요.",
         )
+
     if page == "shop" and category == "중고 바이크":
         return (
             "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | 진바이크",
-            "포천 진바이크 JIN BIKE에서 판매하는 중고 오토바이와 할리데이비슨 매물을 확인하세요.",
+            "포천 진바이크 JIN BIKE의 중고 바이크 매물을 확인하세요.",
         )
+
     if page == "shop" and category == "바이크 용품":
         return (
             "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 진바이크",
-            "포천 진바이크 JIN BIKE의 헬멧, 장갑, 라이딩 기어와 바이크 용품을 확인하세요.",
+            "포천 진바이크 JIN BIKE의 바이크 용품을 확인하세요.",
         )
+
     return (
         "포천 진바이크 JIN BIKE | 중고 오토바이·바이크 의류·라이딩 용품",
-        "포천 진바이크 JIN BIKE. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하고 구매 상담을 받아보세요.",
+        "포천 진바이크 JIN BIKE. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하세요.",
     )
 
 
@@ -53,7 +59,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-
 _original_markdown = st.markdown
 
 
@@ -61,22 +66,14 @@ def safe_markdown(body, *args, **kwargs):
     if isinstance(body, str):
         body = dedent(body).strip()
 
-    # Render HTML directly: Markdown treats indented blocks after blank
-    # lines as code, even when unsafe_allow_html is enabled.
     if kwargs.get("unsafe_allow_html"):
         return st.html(body)
 
-    return _original_markdown(
-        body,
-        *args,
-        **kwargs
-    )
+    return _original_markdown(body, *args, **kwargs)
 
 
 # =========================================================
-# 저장소
-# Render: /var/data/trendpick/products.json
-# 로컬: ./data/products.json
+# STORAGE
 # =========================================================
 
 DATA_DIR = Path(
@@ -93,7 +90,6 @@ PRODUCT_FILE = DATA_DIR / "products.json"
 IMAGE_DIR = DATA_DIR / "product_images"
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-
 BANNER_FILE = (
     Path(__file__).parent
     / "assets"
@@ -101,15 +97,9 @@ BANNER_FILE = (
 )
 
 ADMIN_PASSWORD = os.getenv("MASPICK_ADMIN_PASSWORD", "")
-
 MASPICK_PHONE = os.getenv("MASPICK_PHONE", "").strip()
 MASPICK_KAKAO_URL = os.getenv("MASPICK_KAKAO_URL", "").strip()
 
-
-# =========================================================
-# 최초 샘플 데이터
-# 실제 상품 등록 후 관리자 페이지에서 삭제 가능
-# =========================================================
 
 DEMO_PRODUCTS = [
     {
@@ -154,7 +144,7 @@ DEMO_PRODUCTS = [
         "id": "wear-001",
         "type": "wear",
         "category": "바이크 의류",
-        "subcategory": "재킷",
+        "subcategory": "자켓",
         "brand": "HARLEY-DAVIDSON",
         "name": "라이딩 레더 재킷",
         "price": 489000,
@@ -180,10 +170,6 @@ DEMO_PRODUCTS = [
     },
 ]
 
-
-# =========================================================
-# 데이터 함수
-# =========================================================
 
 def save_products(products):
     tmp = PRODUCT_FILE.with_suffix(".tmp")
@@ -223,6 +209,7 @@ def get_product(products, product_id):
     for product in products:
         if product.get("id") == product_id:
             return product
+
     return None
 
 
@@ -241,6 +228,7 @@ def get_param(name, default=""):
             return value[0] if value else default
 
         return value
+
     except Exception:
         return default
 
@@ -265,10 +253,7 @@ def local_image_path(value):
     if not value:
         return None
 
-    if value.startswith("http://") or value.startswith("https://"):
-        return None
-
-    if value.startswith("data:"):
+    if value.startswith(("http://", "https://", "data:")):
         return None
 
     p = Path(value)
@@ -285,11 +270,7 @@ def image_src(value):
     if not value:
         return ""
 
-    if (
-        value.startswith("http://")
-        or value.startswith("https://")
-        or value.startswith("data:")
-    ):
+    if value.startswith(("http://", "https://", "data:")):
         return value
 
     p = local_image_path(value)
@@ -332,7 +313,6 @@ def save_uploaded_images(uploaded_files, product_id):
     }
 
     for index, uploaded in enumerate(uploaded_files[:8], start=1):
-
         ext = mime_ext.get(
             getattr(uploaded, "type", ""),
             ""
@@ -349,11 +329,7 @@ def save_uploaded_images(uploaded_files, product_id):
                 ".png",
                 ".webp"
             ):
-                ext = (
-                    ".jpg"
-                    if original_ext == ".jpeg"
-                    else original_ext
-                )
+                ext = ".jpg" if original_ext == ".jpeg" else original_ext
             else:
                 ext = ".jpg"
 
@@ -363,10 +339,7 @@ def save_uploaded_images(uploaded_files, product_id):
         )
 
         target = IMAGE_DIR / filename
-
-        target.write_bytes(
-            uploaded.getbuffer()
-        )
+        target.write_bytes(uploaded.getbuffer())
 
         saved.append(
             f"product_images/{filename}"
@@ -377,7 +350,6 @@ def save_uploaded_images(uploaded_files, product_id):
 
 def delete_local_images(product):
     for value in product_images(product):
-
         p = local_image_path(value)
 
         if not p:
@@ -386,21 +358,18 @@ def delete_local_images(product):
         try:
             if p.exists() and IMAGE_DIR in p.parents:
                 p.unlink()
+
         except Exception:
             pass
 
 
 def banner_image_src():
-
     if not BANNER_FILE.exists():
         return ""
 
     try:
-
         mime = (
-            mimetypes.guess_type(
-                BANNER_FILE.name
-            )[0]
+            mimetypes.guess_type(BANNER_FILE.name)[0]
             or "image/jpeg"
         )
 
@@ -408,10 +377,7 @@ def banner_image_src():
             BANNER_FILE.read_bytes()
         ).decode("ascii")
 
-        return (
-            f"data:{mime};base64,"
-            f"{encoded}"
-        )
+        return f"data:{mime};base64,{encoded}"
 
     except Exception:
         return ""
@@ -442,7 +408,11 @@ html, body, .stApp {
 
 .stApp {
     background:
-        radial-gradient(circle at top, #171717 0, #080808 520px);
+        radial-gradient(
+            circle at top,
+            #171717 0,
+            #080808 520px
+        );
 }
 
 .block-container {
@@ -461,71 +431,72 @@ a {
     text-decoration:none !important;
 }
 
-.topline {
-    min-height:34px;
-    border-bottom:1px solid #222;
-    display:flex;
-    align-items:center;
-    justify-content:flex-end;
-    gap:20px;
-    font-size:11px;
-    color:#777;
-}
-
 .header {
+    position:relative;
     display:grid;
-    grid-template-columns:260px 1fr 260px;
+    grid-template-columns:1fr 1fr 1fr;
     align-items:center;
-    min-height:100px;
+    min-height:90px;
     border-bottom:1px solid #242424;
-    gap:28px;
 }
 
-.logo {
-    color:white;
-    font-size:38px;
-    font-weight:1000;
-    letter-spacing:-2.5px;
-}
-
-.logo span {
-    color:#ff6900;
-}
-
-.logo-small {
-    color:#696969;
-    letter-spacing:4px;
-    font-size:8px;
-    margin-top:-4px;
-}
-
-.fake-search {
-    height:48px;
-    border:1px solid #383838;
-    background:#101010;
-    max-width:650px;
-    margin:auto;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:0 17px;
-    width:100%;
-    color:#737373;
-    font-size:13px;
+.header-center {
+    grid-column:2;
+    text-align:center;
 }
 
 .header-right {
+    grid-column:3;
     text-align:right;
-    color:#aaa;
+}
+
+.admin-link {
+    display:inline-block;
+    color:#777 !important;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.5px;
+    padding:8px 10px;
+    border:1px solid #282828;
+    background:#0d0d0d;
+}
+
+.admin-link:hover {
+    color:#ff6900 !important;
+    border-color:#ff6900;
+}
+
+.logo {
+    min-height:44px;
+    font-size:36px;
+    letter-spacing:-1px;
+    font-style:italic;
+}
+
+.logo::before {
+    content:"JIN";
+    color:#ff6900;
+    font-weight:1000;
+}
+
+.logo::after {
+    content:" BIKE";
+    color:#fff;
+    font-weight:1000;
+}
+
+.logo-small {
     font-size:12px;
+    letter-spacing:2px;
+    color:#aaa;
 }
 
 .navbar {
-    min-height:62px;
+    min-height:48px;
     display:flex;
     justify-content:center;
     align-items:center;
-    gap:46px;
+    gap:32px;
     border-bottom:1px solid #252525;
     white-space:nowrap;
     overflow-x:auto;
@@ -541,87 +512,112 @@ a {
     color:#ff6900;
 }
 
-.navbar .sale {
-    color:#ff6900;
-}
-
 .hero {
-    height:410px;
-    margin-top:26px;
-    border:1px solid #222;
-    background:
-        linear-gradient(
-            90deg,
-            rgba(0,0,0,.97) 0%,
-            rgba(0,0,0,.82) 38%,
-            rgba(0,0,0,.22) 100%
-        ),
-        none;
-    background-size:cover;
-    background-position:center;
-    display:flex;
-    align-items:center;
-    padding:55px;
-}
-
-.hero-eyebrow {
-    color:#ff6900;
-    font-size:11px;
-    font-weight:900;
-    letter-spacing:4px;
-}
-
-.hero-title {
-    color:#fff;
-    font-size:56px;
-    font-weight:1000;
-    line-height:1.02;
-    letter-spacing:-3px;
-    margin-top:12px;
-}
-
-.hero-copy {
-    color:#999;
-    font-size:15px;
+    height:230px;
     margin-top:18px;
-    line-height:1.8;
+    border:1px solid #222;
+    background-size:cover;
+    background-position:center center;
 }
 
-.hero-btn {
-    display:inline-block;
-    margin-top:25px;
-    background:#ff6900;
-    color:white !important;
-    padding:14px 24px;
-    font-size:12px;
-    font-weight:900;
+.catalog-layout {
+    display:grid;
+    grid-template-columns:180px minmax(0,1fr);
+    gap:24px;
+    margin-top:18px;
 }
 
-.home-section-title {
-    margin-top:48px;
-    margin-bottom:18px;
-    font-size:24px;
-    font-weight:1000;
-    border-bottom:1px solid #292929;
-    padding-bottom:13px;
+.catalog-sidebar {
+    border-top:2px solid #eee;
+    font-size:14px;
+}
+
+.catalog-sidebar summary {
+    padding:16px 0;
+    font-weight:800;
+    cursor:pointer;
+}
+
+.catalog-sidebar a {
+    display:block;
+    color:#bbb;
+    padding:9px 8px;
+    border-bottom:1px solid #242424;
+    overflow-wrap:anywhere;
+}
+
+.catalog-sidebar a:hover,
+.catalog-sidebar a.active {
+    color:#ff6900;
+    background:#191919;
+}
+
+.category-node {
+    border-bottom:1px solid #242424;
+}
+
+.category-node summary {
+    list-style:none;
+    padding:9px 8px;
+    color:#bbb;
+    cursor:pointer;
+}
+
+.category-node summary::-webkit-details-marker {
+    display:none;
+}
+
+.category-node summary::after {
+    content:'+';
+    float:right;
+    color:#777;
+}
+
+.category-node[open] summary {
+    color:#ff6900;
+    background:#191919;
+}
+
+.category-node[open] summary::after {
+    content:'−';
+}
+
+.category-children {
+    border-bottom:1px solid #242424;
+    padding:4px 0;
+}
+
+.category-children a {
+    border-bottom:0;
+    padding-left:28px;
+    color:#b9c7d4;
+}
+
+.category-children a::before {
+    content:'ㄴ';
+    margin-right:7px;
+    color:#777;
+}
+
+.catalog-results {
+    min-width:0;
 }
 
 .grid {
     display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:16px;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:24px 12px;
+}
+
+.grid > a {
+    min-width:0;
+    color:inherit;
 }
 
 .card {
-    border:1px solid #202020;
-    background:#0d0d0d;
-    transition:.2s;
+    background:transparent;
+    border:0;
     min-width:0;
-}
-
-.card:hover {
-    border-color:#555;
-    transform:translateY(-3px);
 }
 
 .card-imgbox {
@@ -629,90 +625,89 @@ a {
     width:100%;
     aspect-ratio:1 / 1;
     overflow:hidden;
-    background:#151515;
+    background:#eee;
+    border:1px solid #292929;
 }
 
 .card-img {
     width:100%;
     height:100%;
-    object-fit:cover;
+    object-fit:contain;
 }
 
 .badge {
     position:absolute;
-    left:11px;
-    top:11px;
-    padding:6px 9px;
+    left:6px;
+    top:6px;
+    padding:4px 6px;
     background:#ff6900;
     color:#fff;
-    font-size:9px;
+    font-size:12px;
     font-weight:900;
 }
 
 .demo {
     position:absolute;
-    right:11px;
-    top:11px;
-    padding:6px 9px;
+    right:6px;
+    top:6px;
+    padding:4px 6px;
     background:#333;
     color:#aaa;
-    font-size:9px;
+    font-size:12px;
 }
 
 .card-body {
-    padding:14px 14px 18px;
+    padding:12px 2px;
+    text-align:center;
 }
 
 .card-brand {
-    font-size:9px;
-    color:#777;
-    font-weight:900;
-    letter-spacing:1px;
+    font-size:12px;
+    color:#bdbdbd;
 }
 
 .card-name {
     color:#eee;
-    font-weight:900;
     font-size:14px;
+    font-weight:600;
+    line-height:1.5;
+    min-height:42px;
     margin-top:7px;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
 }
 
 .card-info {
-    font-size:11px;
-    color:#777;
+    font-size:12px;
+    color:#aaa;
     margin-top:7px;
-    min-height:17px;
+    line-height:1.5;
 }
 
 .card-price {
-    margin-top:15px;
+    font-size:16px;
+    margin-top:9px;
     color:#fff;
-    font-size:18px;
     font-weight:1000;
 }
 
 .page-title {
-    margin-top:38px;
-    font-size:29px;
+    margin-top:22px;
+    font-size:22px;
     font-weight:1000;
 }
 
 .page-subtitle {
-    color:#777;
-    font-size:12px;
+    font-size:14px;
+    color:#aaa;
     margin-top:7px;
-    margin-bottom:28px;
+    margin-bottom:16px;
 }
 
 .detail-photo {
     width:100%;
     max-height:650px;
-    object-fit:cover;
+    object-fit:contain;
     border:1px solid #252525;
-    background:#111;
+    background:#eee;
 }
 
 .detail-gallery {
@@ -725,46 +720,9 @@ a {
 .detail-thumb {
     width:100%;
     aspect-ratio:1 / 1;
-    object-fit:cover;
+    object-fit:contain;
     border:1px solid #292929;
-    background:#111;
-}
-
-.contact-actions {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    margin-top:22px;
-}
-
-.contact-btn {
-    min-height:52px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:14px;
-    font-weight:900;
-    border:1px solid #333;
-    color:#fff !important;
-    background:#151515;
-}
-
-.contact-btn:hover {
-    border-color:#ff6900;
-}
-
-.contact-btn.primary {
-    background:#ff6900;
-    border-color:#ff6900;
-}
-
-.contact-disabled {
-    margin-top:18px;
-    padding:15px;
-    border:1px solid #292929;
-    color:#777;
-    font-size:12px;
-    background:#101010;
+    background:#eee;
 }
 
 .detail-brand {
@@ -806,11 +764,41 @@ a {
     color:#ddd;
 }
 
-.admin-box {
+.contact-actions {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:22px;
+}
+
+.contact-btn {
+    min-height:52px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    font-weight:900;
+    border:1px solid #333;
+    color:#fff !important;
+    background:#151515;
+}
+
+.contact-btn:hover {
+    border-color:#ff6900;
+}
+
+.contact-btn.primary {
+    background:#ff6900;
+    border-color:#ff6900;
+}
+
+.contact-disabled {
+    margin-top:18px;
+    padding:15px;
     border:1px solid #292929;
-    background:#0e0e0e;
-    padding:22px;
-    margin-bottom:18px;
+    color:#777;
+    font-size:12px;
+    background:#101010;
 }
 
 .admin-product {
@@ -865,179 +853,136 @@ div[data-testid="stSelectbox"] > div > div {
     font-weight:900 !important;
 }
 
+a:focus-visible,
+summary:focus-visible {
+    outline:2px solid #ff6900;
+    outline-offset:3px;
+}
+
 @media(max-width:1100px) {
-
-    .header {
-        grid-template-columns:1fr;
-        padding:18px 0;
-        gap:12px;
-        text-align:center;
-    }
-
-    .header-right {
-        display:none;
+    .catalog-layout {
+        grid-template-columns:150px minmax(0,1fr);
+        gap:16px;
     }
 
     .grid {
-        grid-template-columns:repeat(2,minmax(0,1fr));
+        grid-template-columns:repeat(3,minmax(0,1fr));
     }
 }
 
 @media(max-width:600px) {
-
     .block-container {
-        padding-left:12px !important;
-        padding-right:12px !important;
+        padding-left:14px !important;
+        padding-right:14px !important;
     }
 
-    .topline {
-        display:none;
+    .header {
+        grid-template-columns:1fr 1fr;
+        gap:12px;
+        padding:16px 0;
+    }
+
+    .header-center {
+        grid-column:1;
+        text-align:left;
+    }
+
+    .header-right {
+        grid-column:2;
+        display:block;
     }
 
     .logo {
-        font-size:31px;
+        font-size:30px;
     }
 
     .navbar {
         justify-content:flex-start;
-        gap:25px;
-        min-height:53px;
+        gap:24px;
     }
 
     .hero {
-        height:330px;
-        padding:28px 22px;
+        height:200px;
     }
 
-    .hero-title {
-        font-size:39px;
+    .catalog-layout {
+        grid-template-columns:1fr;
+    }
+
+    .catalog-sidebar:not([open]) > :not(summary) {
+        display:none;
     }
 
     .grid {
         grid-template-columns:repeat(2,minmax(0,1fr));
-        gap:8px;
-    }
-
-    .card-body {
-        padding:10px;
-    }
-
-    .card-name {
-        font-size:12px;
-    }
-
-    .card-price {
-        font-size:15px;
+        gap:20px 10px;
     }
 }
 
-/* Compact, product-first JIN BIKE storefront. */
-.stApp {background:#080808; color:#f4f4f4;}
-.header {min-height:90px; grid-template-columns:1fr 1fr 1fr;}
-.header > div:first-child {grid-column:2; grid-row:1; text-align:center;}
-.header .fake-search {grid-column:1; grid-row:1;}
-.header-right {grid-column:3; grid-row:1;}
-.logo {font-size:36px; letter-spacing:-1px; font-style:italic;}
-.logo {min-height:44px;}
-.logo::before {content:"JIN"; color:#ff6900; font-weight:1000;}
-.logo::after {content:" BIKE"; color:#fff; font-weight:1000;}
-.logo span {display:none;}
-.logo-small {font-size:12px; letter-spacing:2px; color:#aaa;}
-.topline {font-size:12px; color:#aaa;}
-.navbar {min-height:48px; gap:32px;}
-.hero {height:230px; margin-top:18px; padding:28px; position:relative;}
-.hero-title {font-size:36px;}
-.hero-eyebrow {font-size:14px; letter-spacing:2px;}
-.hero-copy {font-size:14px;}
-.page-title {margin-top:22px; font-size:22px;}
-.page-subtitle {font-size:14px; color:#aaa; margin-bottom:16px;}
-.category-copy {max-width:780px; margin:0 0 22px; color:#c7c7c7; font-size:15px; line-height:1.8;}
-.catalog-layout {display:grid; grid-template-columns:180px minmax(0,1fr); gap:24px; margin-top:18px;}
-.catalog-sidebar {border-top:2px solid #eee; font-size:14px;}
-.catalog-sidebar summary {padding:16px 0; font-weight:800; cursor:pointer;}
-.catalog-sidebar a {display:block; color:#bbb; padding:9px 8px; border-bottom:1px solid #242424; overflow-wrap:anywhere;}
-.catalog-sidebar a:hover,.catalog-sidebar a.active {color:#ff6900; background:#191919;}
-.category-children {border-bottom:1px solid #242424; padding:4px 0;}
-.category-children a {border-bottom:0; padding-left:28px; color:#b9c7d4;}
-.category-children a::before {content:'ㄴ'; margin-right:7px; color:#777;}
-.category-node {border-bottom:1px solid #242424;}
-.category-node summary {list-style:none; padding:9px 8px; color:#bbb; cursor:pointer;}
-.category-node summary::-webkit-details-marker {display:none;}
-.category-node summary::after {content:'+'; float:right; color:#777;}
-.category-node[open] summary {color:#ff6900; background:#191919;}
-.category-node[open] summary::after {content:'−';}
-.catalog-results {min-width:0;}
-.grid {grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 12px;}
-.grid > a {min-width:0; color:inherit;}
-.card {background:transparent; border:0;}
-.card:hover {transform:none;}
-.card-imgbox {background:#eee; border:1px solid #292929;}
-.card-img {object-fit:contain;}
-.card-body {padding:12px 2px; text-align:center;}
-.card-brand {font-size:12px; color:#bdbdbd; letter-spacing:0;}
-.card-name {font-size:14px; font-weight:600; white-space:normal; line-height:1.5; min-height:42px;}
-.card-info {font-size:12px; color:#aaa; line-height:1.5;}
-.card-price {font-size:16px; margin-top:9px;}
-.badge,.demo {font-size:12px; padding:4px 6px; top:6px;}
-.badge {left:6px;}.demo {right:6px;}
-a:focus-visible,summary:focus-visible {outline:2px solid #ff6900; outline-offset:3px;}
-@media(max-width:1100px) {
- .catalog-layout {grid-template-columns:150px minmax(0,1fr); gap:16px;}
- .grid {grid-template-columns:repeat(3,minmax(0,1fr));}
-}
-@media(max-width:600px) {
- .block-container {padding-left:14px !important; padding-right:14px !important;}
- .header {grid-template-columns:1fr 1fr; gap:12px; padding:16px 0;}
- .header > div:first-child {grid-column:1; text-align:left;}
- .header-right {grid-column:2; display:block; font-size:14px;}
- .header .fake-search {grid-column:1 / -1; grid-row:2; display:flex;}
- .logo {font-size:30px;}.navbar {justify-content:flex-start; gap:24px;}
- .hero {height:200px; padding:20px;}.hero-title {font-size:28px;}
- .hero-eyebrow {font-size:12px;}.hero-copy {max-width:240px;}
- .catalog-layout {grid-template-columns:1fr;}
- .catalog-sidebar:not([open]) > :not(summary) {display:none;}
- .grid {grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 10px;}
-}
 @media(min-width:601px) {
- .catalog-sidebar::details-content {content-visibility:visible; display:block;}
- .catalog-sidebar:not([open]) > :not(summary) {display:block;}
+    .catalog-sidebar:not([open]) > :not(summary) {
+        display:block;
+    }
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 
 # =========================================================
-# 헤더
+# HEADER
+# 관리자 버튼은 우측 상단
 # =========================================================
 
 safe_markdown("""
 <div class="header">
 
-    <div>
+    <div class="header-center">
         <a href="?page=home">
-            <div class="logo" translate="no" aria-label="JIN BIKE"></div>
-            <div class="logo-small">MOTORCYCLE CULTURE</div>
+            <div
+                class="logo"
+                translate="no"
+                aria-label="JIN BIKE"
+            ></div>
+            <div class="logo-small">
+                MOTORCYCLE CULTURE
+            </div>
+        </a>
+    </div>
+
+    <div class="header-right">
+        <a
+            class="admin-link"
+            href="?page=admin"
+        >
+            관리자
         </a>
     </div>
 
 </div>
 
 <div class="navbar">
-    <a href="?page=shop&cat=중고 바이크">중고 바이크</a>
-    <a href="?page=shop&cat=바이크 의류">바이크 의류</a>
-    <a href="?page=shop&cat=바이크 용품">바이크 용품</a>
-    <a href="?page=shop&cat=전체상품">전체상품</a>
-    <a class="sale" href="?page=admin">관리자</a>
+    <a href="?page=shop&cat=중고 바이크">
+        중고 바이크
+    </a>
+    <a href="?page=shop&cat=바이크 의류">
+        바이크 의류
+    </a>
+    <a href="?page=shop&cat=바이크 용품">
+        바이크 용품
+    </a>
+    <a href="?page=shop&cat=전체상품">
+        전체상품
+    </a>
 </div>
 """, unsafe_allow_html=True)
 
 
 # =========================================================
-# 상품 카드
+# PRODUCT CARD
 # =========================================================
 
 def card_html(product):
-
     if product.get("type") == "bike":
         info = (
             f"{escape(str(product.get('year','')))} · "
@@ -1045,24 +990,30 @@ def card_html(product):
             f"{escape(str(product.get('cc','')))}"
         )
     else:
-        info = escape(str(product.get("subcategory", "")))
+        info = escape(
+            str(product.get("subcategory", ""))
+        )
 
     demo_badge = ""
 
     if product.get("demo"):
         demo_badge = '<div class="demo">DEMO</div>'
 
+    image = escape(
+        main_image_src(product),
+        quote=True
+    )
+
     return dedent(f"""
     <a href="?page=detail&id={escape(str(product.get('id','')))}">
         <div class="card">
 
             <div class="card-imgbox">
-
                 <img
                     class="card-img"
                     loading="lazy"
-                    alt="{escape(str(product.get('name', '상품')), quote=True)}"
-                    src="{escape(main_image_src(product), quote=True)}"
+                    alt="{escape(str(product.get('name','상품')), quote=True)}"
+                    src="{image}"
                 >
 
                 <div class="badge">
@@ -1070,7 +1021,6 @@ def card_html(product):
                 </div>
 
                 {demo_badge}
-
             </div>
 
             <div class="card-body">
@@ -1099,7 +1049,6 @@ def card_html(product):
 
 
 def render_grid(products):
-
     if not products:
         st.info("등록된 상품이 없습니다.")
         return
@@ -1111,7 +1060,10 @@ def render_grid(products):
 
     html += "</div>"
 
-    safe_markdown(html, unsafe_allow_html=True)
+    safe_markdown(
+        html,
+        unsafe_allow_html=True
+    )
 
 
 # =========================================================
@@ -1119,21 +1071,21 @@ def render_grid(products):
 # =========================================================
 
 def render_home():
-
     banner = banner_image_src()
 
-    safe_markdown(f"""
-    <div
-        class="hero"
-        style="
-            background-image:url('{escape(banner, quote=True)}');
-            background-position:center center;
-            background-size:cover;
-        "
-        aria-label="진바이크 매장 전경"
-    ></div>
-
-    """, unsafe_allow_html=True)
+    safe_markdown(
+        f"""
+        <div
+            class="hero"
+            style="
+                background-image:
+                    url('{escape(banner, quote=True)}');
+            "
+            aria-label="진바이크 매장 전경"
+        ></div>
+        """,
+        unsafe_allow_html=True
+    )
 
     render_shop()
 
@@ -1143,8 +1095,6 @@ def render_home():
 # =========================================================
 
 def render_shop():
-
-    is_home = get_param("page", "home") == "home"
     category = get_param("cat", "전체상품")
     subcategory = get_param("sub", "")
 
@@ -1156,36 +1106,12 @@ def render_shop():
             if p.get("category") == category
         ]
 
-    if not is_home:
-        safe_markdown(
-            f"""
-            <div class="page-title">
-                {escape(category)}
-            </div>
+    # 사용자 요청:
+    # 전체상품 제목 / HOME › SHOP / 설명문 전부 제거
 
-            <div class="page-subtitle">
-                HOME › SHOP › {escape(category)}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    category_copy = {
-        "전체상품": "포천 진바이크 JIN BIKE에서 판매하는 중고 바이크, 바이크 의류, 헬멧과 라이딩 용품을 한눈에 확인하세요.",
-        "중고 바이크": "포천 진바이크의 중고 오토바이 매물입니다. 연식, 주행거리, 배기량과 상세 상태를 확인한 뒤 상담받을 수 있습니다.",
-        "바이크 의류": "포천 진바이크에서 판매하는 바이크 의류입니다. 라이딩 자켓, 팬츠, 글러브, 헬멧과 보호장비를 상품별로 확인하세요.",
-        "바이크 용품": "헬멧, 장갑, 보호장비 등 라이딩에 필요한 바이크 용품을 확인하세요.",
-    }
-    if not is_home:
-        safe_markdown(
-            f'<p class="category-copy">{escape(category_copy.get(category, category_copy["전체상품"]))}</p>',
-            unsafe_allow_html=True,
-        )
-
-    c1, c2 = st.columns([3,1])
+    c1, c2 = st.columns([3, 1])
 
     with c1:
-
         keyword = st.text_input(
             "검색",
             placeholder="상품명 또는 브랜드 검색",
@@ -1193,7 +1119,6 @@ def render_shop():
         )
 
     with c2:
-
         sort = st.selectbox(
             "정렬",
             [
@@ -1205,39 +1130,71 @@ def render_shop():
         )
 
     if subcategory:
-        wear_filters = {
-            "상의": {"상의", "티셔츠", "셔츠", "후드", "맨투맨"},
-            "바지": {"바지", "팬츠", "청바지"},
-            "자켓": {"자켓", "재킷", "라이딩 재킷"},
+        sub_filters = {
+            "상의": {
+                "상의",
+                "티셔츠",
+                "셔츠",
+                "후드",
+                "맨투맨",
+            },
+            "하의": {
+                "하의",
+                "바지",
+                "팬츠",
+                "청바지",
+            },
+            "자켓": {
+                "자켓",
+                "재킷",
+                "라이딩 재킷",
+            },
+            "장갑": {
+                "장갑",
+                "글러브",
+            },
+            "신발": {
+                "신발",
+                "부츠",
+                "라이딩 부츠",
+            },
+            "헬멧": {
+                "헬멧",
+            },
         }
-        allowed = wear_filters.get(subcategory, {subcategory})
-        items = [p for p in items if p.get("subcategory") in allowed]
+
+        allowed = sub_filters.get(
+            subcategory,
+            {subcategory}
+        )
+
+        items = [
+            p for p in items
+            if p.get("subcategory") in allowed
+        ]
 
     if keyword:
-
         k = keyword.lower().strip()
 
         items = [
             p for p in items
             if (
-                k in str(p.get("name","")).lower()
+                k in str(p.get("name", "")).lower()
                 or
-                k in str(p.get("brand","")).lower()
+                k in str(p.get("brand", "")).lower()
                 or
-                k in str(p.get("subcategory","")).lower()
+                k in str(p.get("subcategory", "")).lower()
             )
         ]
 
     if sort == "낮은 가격순":
-
         items.sort(
-            key=lambda x: int(x.get("price",0))
+            key=lambda x: int(x.get("price", 0))
         )
 
     elif sort == "높은 가격순":
-
         items.sort(
-            key=lambda x: int(x.get("price",0)),
+            key=lambda x: int(x.get("price", 0)),
             reverse=True
         )
 
@@ -1249,31 +1206,119 @@ def render_shop():
     )
 
     def filter_link(label, **params):
-        url = "?" + urlencode({"page": "shop", **params})
-        active = (params.get("cat") == category and
-                  params.get("sub", "") == subcategory)
-        return f'<a class="{"active" if active else ""}" href="{escape(url, quote=True)}">{escape(str(label))}</a>'
+        url = "?" + urlencode(
+            {
+                "page": "shop",
+                **params
+            }
+        )
+
+        active = (
+            params.get("cat") == category
+            and
+            params.get("sub", "") == subcategory
+        )
+
+        active_class = (
+            "active"
+            if active
+            else ""
+        )
+
+        return (
+            f'<a class="{active_class}" '
+            f'href="{escape(url, quote=True)}">'
+            f'{escape(str(label))}</a>'
+        )
 
     is_wear = category == "바이크 의류"
     is_gear = category == "바이크 용품"
-    sidebar = f'<details class="catalog-sidebar" {"open" if (is_wear or is_gear) else ""}><summary>카테고리</summary><nav aria-label="상품 분류">'
-    for cat in ["전체상품", "중고 바이크", "바이크 의류", "바이크 용품"]:
+
+    sidebar = (
+        f'<details class="catalog-sidebar" '
+        f'{"open" if (is_wear or is_gear) else ""}>'
+        f'<summary>카테고리</summary>'
+        f'<nav aria-label="상품 분류">'
+    )
+
+    for cat in [
+        "전체상품",
+        "중고 바이크",
+        "바이크 의류",
+        "바이크 용품",
+    ]:
+
         if cat == "바이크 의류":
-            sidebar += f'<details class="category-node" {"open" if is_wear else ""}><summary>바이크 의류</summary><div class="category-children">'
-            for sub in ["상의", "하의", "자켓", "장갑", "신발"]:
-                sidebar += filter_link(sub, cat="바이크 의류", sub=sub)
-            sidebar += '</div></details>'
+            sidebar += (
+                f'<details class="category-node" '
+                f'{"open" if is_wear else ""}>'
+                f'<summary>바이크 의류</summary>'
+                f'<div class="category-children">'
+            )
+
+            for sub in [
+                "상의",
+                "하의",
+                "자켓",
+                "장갑",
+                "신발",
+            ]:
+                sidebar += filter_link(
+                    sub,
+                    cat="바이크 의류",
+                    sub=sub
+                )
+
+            sidebar += "</div></details>"
+
         elif cat == "바이크 용품":
-            sidebar += f'<details class="category-node" {"open" if is_gear else ""}><summary>바이크 용품</summary><div class="category-children">'
-            sidebar += filter_link("헬멧", cat="바이크 용품", sub="헬멧")
-            sidebar += '</div></details>'
+            sidebar += (
+                f'<details class="category-node" '
+                f'{"open" if is_gear else ""}>'
+                f'<summary>바이크 용품</summary>'
+                f'<div class="category-children">'
+            )
+
+            sidebar += filter_link(
+                "헬멧",
+                cat="바이크 용품",
+                sub="헬멧"
+            )
+
+            sidebar += "</div></details>"
+
         else:
-            sidebar += filter_link(cat, cat=cat)
-    sidebar += '</nav></details>'
-    results = '<div class="grid">' + ''.join(card_html(p) for p in items) + '</div>'
-    if not items:
-        results = '<p role="status">조건에 맞는 상품이 없습니다. 필터를 초기화해 주세요.</p>'
-    safe_markdown('<div class="catalog-layout">' + sidebar + '<section class="catalog-results" aria-label="상품 목록">' + results + '</section></div>', unsafe_allow_html=True)
+            sidebar += filter_link(
+                cat,
+                cat=cat
+            )
+
+    sidebar += "</nav></details>"
+
+    if items:
+        results = (
+            '<div class="grid">'
+            + "".join(
+                card_html(p)
+                for p in items
+            )
+            + "</div>"
+        )
+    else:
+        results = (
+            '<p role="status">'
+            '조건에 맞는 상품이 없습니다.'
+            '</p>'
+        )
+
+    safe_markdown(
+        '<div class="catalog-layout">'
+        + sidebar
+        + '<section class="catalog-results" aria-label="상품 목록">'
+        + results
+        + "</section></div>",
+        unsafe_allow_html=True
+    )
 
 
 # =========================================================
@@ -1281,7 +1326,6 @@ def render_shop():
 # =========================================================
 
 def render_detail():
-
     product_id = get_param("id", "")
 
     product = get_product(
@@ -1290,7 +1334,6 @@ def render_detail():
     )
 
     if not product:
-
         st.error("상품을 찾을 수 없습니다.")
         return
 
@@ -1305,11 +1348,9 @@ def render_detail():
     )
 
     with left:
-
         images = product_images(product)
 
         if images:
-
             first_src = image_src(images[0])
 
             safe_markdown(
@@ -1323,15 +1364,12 @@ def render_detail():
             )
 
             if len(images) > 1:
-
                 gallery = '<div class="detail-gallery">'
 
                 for image_value in images[1:8]:
-
                     src = image_src(image_value)
 
                     if src:
-
                         gallery += (
                             '<img class="detail-thumb" '
                             f'src="{escape(src, quote=True)}">'
@@ -1343,13 +1381,12 @@ def render_detail():
                     gallery,
                     unsafe_allow_html=True
                 )
-
         else:
-
-            st.info("등록된 상품 사진이 없습니다.")
+            st.info(
+                "등록된 상품 사진이 없습니다."
+            )
 
     with right:
-
         safe_markdown(
             f"""
             <div class="detail-brand">
@@ -1368,40 +1405,33 @@ def render_detail():
         )
 
         if product.get("type") == "bike":
-
             specs = [
-                ("상태", product.get("condition","")),
-                ("연식", product.get("year","")),
-                ("주행거리", product.get("mileage","")),
-                ("배기량", product.get("cc","")),
-                ("지역", product.get("region","")),
-                ("사고유무", product.get("accident","")),
+                ("상태", product.get("condition", "")),
+                ("연식", product.get("year", "")),
+                ("주행거리", product.get("mileage", "")),
+                ("배기량", product.get("cc", "")),
+                ("지역", product.get("region", "")),
+                ("사고유무", product.get("accident", "")),
             ]
-
         else:
-
             specs = [
-                ("상품구분", product.get("category","")),
-                ("종류", product.get("subcategory","")),
-                ("브랜드", product.get("brand","")),
-                ("상태", product.get("condition","")),
+                ("상품구분", product.get("category", "")),
+                ("종류", product.get("subcategory", "")),
+                ("브랜드", product.get("brand", "")),
+                ("상태", product.get("condition", "")),
             ]
 
         html = ""
 
         for label, value in specs:
-
             html += f"""
             <div class="spec-row">
-
                 <div class="spec-label">
                     {escape(str(label))}
                 </div>
-
                 <div class="spec-value">
                     {escape(str(value))}
                 </div>
-
             </div>
             """
 
@@ -1421,7 +1451,6 @@ def render_detail():
         contact_buttons = ""
 
         if MASPICK_PHONE:
-
             tel_number = "".join(
                 c for c in MASPICK_PHONE
                 if c.isdigit() or c == "+"
@@ -1437,7 +1466,6 @@ def render_detail():
             """
 
         if MASPICK_KAKAO_URL:
-
             contact_buttons += f"""
             <a
                 class="contact-btn"
@@ -1450,7 +1478,6 @@ def render_detail():
             """
 
         if contact_buttons:
-
             safe_markdown(
                 f"""
                 <div class="contact-actions">
@@ -1459,9 +1486,7 @@ def render_detail():
                 """,
                 unsafe_allow_html=True
             )
-
         else:
-
             safe_markdown(
                 """
                 <div class="contact-disabled">
@@ -1477,7 +1502,6 @@ def render_detail():
 # =========================================================
 
 def admin_login():
-
     safe_markdown(
         """
         <div class="page-title">
@@ -1492,7 +1516,6 @@ def admin_login():
     )
 
     if not ADMIN_PASSWORD:
-
         st.error(
             "관리자 비밀번호가 아직 서버에 설정되지 않았습니다."
         )
@@ -1506,7 +1529,6 @@ def admin_login():
     if st.session_state.get(
         "admin_logged_in"
     ):
-
         return True
 
     password = st.text_input(
@@ -1518,9 +1540,7 @@ def admin_login():
         "관리자 로그인",
         use_container_width=True
     ):
-
         if password == ADMIN_PASSWORD:
-
             st.session_state[
                 "admin_logged_in"
             ] = True
@@ -1528,7 +1548,6 @@ def admin_login():
             st.rerun()
 
         else:
-
             st.error(
                 "비밀번호가 올바르지 않습니다."
             )
@@ -1537,11 +1556,10 @@ def admin_login():
 
 
 # =========================================================
-# 상품 등록
+# ADMIN - ADD PRODUCT
 # =========================================================
 
 def render_add_product():
-
     st.subheader("상품 등록")
 
     product_type = st.selectbox(
@@ -1549,27 +1567,36 @@ def render_add_product():
         [
             "중고 바이크",
             "바이크 의류",
-            "바이크 용품"
+            "바이크 용품",
         ],
         key="add_type"
     )
 
     category_options = {
         "중고 바이크": [
-            "크루저", "투어링", "스포츠", "네이키드", "스쿠터", "기타"
+            "크루저",
+            "투어링",
+            "스포츠",
+            "네이키드",
+            "스쿠터",
+            "기타",
         ],
         "바이크 의류": [
-            "상의", "하의", "자켓", "장갑", "신발"
+            "상의",
+            "하의",
+            "자켓",
+            "장갑",
+            "신발",
         ],
         "바이크 용품": [
-            "헬멧", "기타"
+            "헬멧",
+            "기타",
         ],
     }
 
     c1, c2 = st.columns(2)
 
     with c1:
-
         brand = st.text_input(
             "브랜드",
             key="add_brand"
@@ -1600,13 +1627,12 @@ def render_add_product():
         )
 
     with c2:
-
         condition = st.selectbox(
             "판매상태",
             [
                 "판매중",
                 "예약중",
-                "판매완료"
+                "판매완료",
             ],
             key="add_condition"
         )
@@ -1617,7 +1643,7 @@ def render_add_product():
                 "jpg",
                 "jpeg",
                 "png",
-                "webp"
+                "webp",
             ],
             accept_multiple_files=True,
             help="최대 8장까지 등록할 수 있습니다.",
@@ -1643,13 +1669,13 @@ def render_add_product():
     accident = ""
 
     if product_type == "중고 바이크":
-
-        safe_markdown("#### 중고 바이크 정보")
+        safe_markdown(
+            "#### 중고 바이크 정보"
+        )
 
         b1, b2, b3 = st.columns(3)
 
         with b1:
-
             year = st.text_input(
                 "연식",
                 placeholder="2021",
@@ -1663,7 +1689,6 @@ def render_add_product():
             )
 
         with b2:
-
             mileage = st.text_input(
                 "주행거리",
                 placeholder="18,200km",
@@ -1677,7 +1702,6 @@ def render_add_product():
             )
 
         with b3:
-
             cc = st.text_input(
                 "배기량",
                 placeholder="1,868cc",
@@ -1688,29 +1712,26 @@ def render_add_product():
         "상품 등록하기",
         use_container_width=True
     ):
-
         if not name.strip():
-
             st.error(
                 "상품명을 입력해 주세요."
             )
-
             return
 
         if len(uploaded_images or []) > 8:
-
             st.error(
                 "상품 사진은 최대 8장까지 등록할 수 있습니다."
             )
-
             return
 
-        if not uploaded_images and not image.strip():
-
+        if (
+            not uploaded_images
+            and
+            not image.strip()
+        ):
             st.error(
                 "상품 사진을 직접 업로드하거나 이미지 URL을 입력해 주세요."
             )
-
             return
 
         type_code = {
@@ -1726,8 +1747,14 @@ def render_add_product():
             product_id
         )
 
-        if not saved_images and image.strip():
-            saved_images = [image.strip()]
+        if (
+            not saved_images
+            and
+            image.strip()
+        ):
+            saved_images = [
+                image.strip()
+            ]
 
         new_product = {
             "id": product_id,
@@ -1750,7 +1777,6 @@ def render_add_product():
         }
 
         if product_type == "중고 바이크":
-
             new_product.update({
                 "year": year.strip(),
                 "mileage": mileage.strip(),
@@ -1759,9 +1785,13 @@ def render_add_product():
                 "accident": accident.strip(),
             })
 
-        PRODUCTS.append(new_product)
+        PRODUCTS.append(
+            new_product
+        )
 
-        save_products(PRODUCTS)
+        save_products(
+            PRODUCTS
+        )
 
         st.success(
             "상품이 등록되었습니다."
@@ -1771,26 +1801,26 @@ def render_add_product():
 
 
 # =========================================================
-# 상품 수정 / 삭제
+# ADMIN - EDIT / DELETE
 # =========================================================
 
 def render_manage_products():
-
     st.subheader(
         f"등록 상품 관리 ({len(PRODUCTS)}개)"
     )
 
     if not PRODUCTS:
-
         st.info(
             "등록된 상품이 없습니다."
         )
-
         return
 
     options = {
-        f"{p.get('name','상품')} | {money(p.get('price',0))} | {p.get('id','')}":
-        p.get("id","")
+        (
+            f"{p.get('name','상품')} | "
+            f"{money(p.get('price',0))} | "
+            f"{p.get('id','')}"
+        ): p.get("id", "")
         for p in PRODUCTS
     }
 
@@ -1814,7 +1844,6 @@ def render_manage_products():
     safe_markdown(
         f"""
         <div class="admin-product">
-
             <div class="admin-product-name">
                 {escape(str(product.get('name','')))}
             </div>
@@ -1826,7 +1855,6 @@ def render_manage_products():
                 ·
                 {money(product.get('price',0))}
             </div>
-
         </div>
         """,
         unsafe_allow_html=True
@@ -1835,10 +1863,7 @@ def render_manage_products():
     edit_brand = st.text_input(
         "브랜드",
         value=str(
-            product.get(
-                "brand",
-                ""
-            )
+            product.get("brand", "")
         ),
         key="edit_brand"
     )
@@ -1846,10 +1871,7 @@ def render_manage_products():
     edit_name = st.text_input(
         "상품명",
         value=str(
-            product.get(
-                "name",
-                ""
-            )
+            product.get("name", "")
         ),
         key="edit_name"
     )
@@ -1858,51 +1880,91 @@ def render_manage_products():
         "가격",
         min_value=0,
         value=int(
-            product.get(
-                "price",
-                0
-            )
+            product.get("price", 0)
         ),
         step=10000,
         key="edit_price"
     )
 
-    edit_subcategory = st.text_input(
-        "세부 카테고리",
-        value=str(
-            product.get(
-                "subcategory",
-                ""
-            )
+    edit_category_options = {
+        "중고 바이크": [
+            "크루저",
+            "투어링",
+            "스포츠",
+            "네이키드",
+            "스쿠터",
+            "기타",
+        ],
+        "바이크 의류": [
+            "상의",
+            "하의",
+            "자켓",
+            "장갑",
+            "신발",
+        ],
+        "바이크 용품": [
+            "헬멧",
+            "기타",
+        ],
+    }
+
+    current_category = product.get(
+        "category",
+        "바이크 용품"
+    )
+
+    edit_options = list(
+        edit_category_options.get(
+            current_category,
+            ["기타"]
+        )
+    )
+
+    current_subcategory = str(
+        product.get(
+            "subcategory",
+            ""
+        )
+    )
+
+    if (
+        current_subcategory
+        and
+        current_subcategory not in edit_options
+    ):
+        edit_options.insert(
+            0,
+            current_subcategory
+        )
+
+    edit_subcategory = st.selectbox(
+        "카테고리",
+        edit_options,
+        index=(
+            edit_options.index(current_subcategory)
+            if current_subcategory in edit_options
+            else 0
         ),
         key="edit_subcategory"
     )
 
+    conditions = [
+        "판매중",
+        "예약중",
+        "판매완료",
+    ]
+
+    current_condition = product.get(
+        "condition",
+        "판매중"
+    )
+
     edit_condition = st.selectbox(
         "판매상태",
-        [
-            "판매중",
-            "예약중",
-            "판매완료"
-        ],
+        conditions,
         index=(
-            [
-                "판매중",
-                "예약중",
-                "판매완료"
-            ].index(
-                product.get(
-                    "condition",
-                    "판매중"
-                )
-            )
-            if product.get(
-                "condition"
-            ) in [
-                "판매중",
-                "예약중",
-                "판매완료"
-            ]
+            conditions.index(current_condition)
+            if current_condition in conditions
             else 0
         ),
         key="edit_condition"
@@ -1911,18 +1973,16 @@ def render_manage_products():
     edit_badge = st.text_input(
         "배지",
         value=str(
-            product.get(
-                "badge",
-                ""
-            )
+            product.get("badge", "")
         ),
         key="edit_badge"
     )
 
-    current_images = product_images(product)
+    current_images = product_images(
+        product
+    )
 
     if current_images:
-
         st.caption(
             f"현재 등록 사진: {len(current_images)}장"
         )
@@ -1933,7 +1993,7 @@ def render_manage_products():
             "jpg",
             "jpeg",
             "png",
-            "webp"
+            "webp",
         ],
         accept_multiple_files=True,
         help="새 사진을 선택하면 기존 사진 전체가 교체됩니다.",
@@ -1965,7 +2025,6 @@ def render_manage_products():
     bike_values = {}
 
     if product.get("type") == "bike":
-
         safe_markdown(
             "#### 차량 정보"
         )
@@ -1973,14 +2032,10 @@ def render_manage_products():
         e1, e2, e3 = st.columns(3)
 
         with e1:
-
             bike_values["year"] = st.text_input(
                 "연식",
                 value=str(
-                    product.get(
-                        "year",
-                        ""
-                    )
+                    product.get("year", "")
                 ),
                 key="edit_year"
             )
@@ -1988,23 +2043,16 @@ def render_manage_products():
             bike_values["region"] = st.text_input(
                 "지역",
                 value=str(
-                    product.get(
-                        "region",
-                        ""
-                    )
+                    product.get("region", "")
                 ),
                 key="edit_region"
             )
 
         with e2:
-
             bike_values["mileage"] = st.text_input(
                 "주행거리",
                 value=str(
-                    product.get(
-                        "mileage",
-                        ""
-                    )
+                    product.get("mileage", "")
                 ),
                 key="edit_mileage"
             )
@@ -2012,23 +2060,16 @@ def render_manage_products():
             bike_values["accident"] = st.text_input(
                 "사고유무",
                 value=str(
-                    product.get(
-                        "accident",
-                        ""
-                    )
+                    product.get("accident", "")
                 ),
                 key="edit_accident"
             )
 
         with e3:
-
             bike_values["cc"] = st.text_input(
                 "배기량",
                 value=str(
-                    product.get(
-                        "cc",
-                        ""
-                    )
+                    product.get("cc", "")
                 ),
                 key="edit_cc"
             )
@@ -2036,12 +2077,10 @@ def render_manage_products():
     b1, b2 = st.columns(2)
 
     with b1:
-
         if st.button(
             "수정 저장",
             use_container_width=True
         ):
-
             product["brand"] = edit_brand.strip()
             product["name"] = edit_name.strip()
             product["price"] = int(edit_price)
@@ -2050,20 +2089,22 @@ def render_manage_products():
             product["badge"] = edit_badge.strip()
 
             if replacement_images:
-
                 if len(replacement_images) > 8:
-
                     st.error(
                         "상품 사진은 최대 8장까지 등록할 수 있습니다."
                     )
-
                     return
 
-                delete_local_images(product)
+                delete_local_images(
+                    product
+                )
 
                 updated_images = save_uploaded_images(
                     replacement_images,
-                    product.get("id", uuid.uuid4().hex[:12])
+                    product.get(
+                        "id",
+                        uuid.uuid4().hex[:12]
+                    )
                 )
 
                 product["images"] = updated_images
@@ -2074,12 +2115,12 @@ def render_manage_products():
                 )
 
             elif edit_image.strip():
-
                 if (
                     not current_images
-                    or edit_image.strip() != str(current_images[0])
+                    or
+                    edit_image.strip()
+                    != str(current_images[0])
                 ):
-
                     product["images"] = [
                         edit_image.strip()
                     ]
@@ -2088,14 +2129,18 @@ def render_manage_products():
                         edit_image.strip()
                     )
 
-            product["description"] = edit_description.strip()
+            product["description"] = (
+                edit_description.strip()
+            )
 
             for key, value in bike_values.items():
                 product[key] = value.strip()
 
             product["demo"] = False
 
-            save_products(PRODUCTS)
+            save_products(
+                PRODUCTS
+            )
 
             st.success(
                 "수정되었습니다."
@@ -2104,7 +2149,6 @@ def render_manage_products():
             st.rerun()
 
     with b2:
-
         confirm_delete = st.checkbox(
             "삭제 확인",
             key="delete_confirm"
@@ -2114,16 +2158,15 @@ def render_manage_products():
             "상품 삭제",
             use_container_width=True
         ):
-
             if not confirm_delete:
-
                 st.warning(
                     "삭제 확인을 먼저 체크해 주세요."
                 )
 
             else:
-
-                delete_local_images(product)
+                delete_local_images(
+                    product
+                )
 
                 PRODUCTS[:] = [
                     p for p in PRODUCTS
@@ -2146,27 +2189,23 @@ def render_manage_products():
 # =========================================================
 
 def render_admin():
-
     if not admin_login():
         return
 
     top1, top2 = st.columns(
-        [5,1]
+        [5, 1]
     )
 
     with top1:
-
         st.success(
             f"관리자 로그인 상태 · 저장 위치: {PRODUCT_FILE}"
         )
 
     with top2:
-
         if st.button(
             "로그아웃",
             use_container_width=True
         ):
-
             st.session_state[
                 "admin_logged_in"
             ] = False
@@ -2176,7 +2215,7 @@ def render_admin():
     tab1, tab2 = st.tabs(
         [
             "상품 등록",
-            "상품 수정 · 삭제"
+            "상품 수정 · 삭제",
         ]
     )
 
@@ -2197,19 +2236,15 @@ page = get_param(
 )
 
 if page == "shop":
-
     render_shop()
 
 elif page == "detail":
-
     render_detail()
 
 elif page == "admin":
-
     render_admin()
 
 else:
-
     render_home()
 
 
@@ -2217,17 +2252,26 @@ else:
 # FOOTER
 # =========================================================
 
-safe_markdown(f"""
-<div class="footer-block" translate="no">
+safe_markdown(
+    f"""
+    <div
+        class="footer-block"
+        translate="no"
+    >
+        {STORE_NAME}<br>
+        {STORE_ADDRESS}<br>
 
-    {STORE_NAME}<br>
-    {STORE_ADDRESS}<br>
-    중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
+        중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
 
-    경기 포천 · 바이크 매물 및 상품 문의<br><br>
+        경기 포천 · 바이크 매물 및 상품 문의
+        <br><br>
 
-    © JIN BIKE. 모든 권리 보유.<br>
-    <a href="/app/static/sitemap.xml">사이트맵</a>
+        © JIN BIKE. 모든 권리 보유.<br>
 
-</div>
-""", unsafe_allow_html=True)
+        <a href="/app/static/sitemap.xml">
+            사이트맵
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
