@@ -514,14 +514,17 @@ a {
 
 .hero {
     width:100%;
-    aspect-ratio:1417 / 452;
-    height:auto;
     margin-top:28px;
     border:1px solid #222;
-    background-repeat:no-repeat;
-    background-size:cover;
-    background-position:center center;
-    background-color:#080808;
+    overflow:hidden;
+    line-height:0;
+    background:#080808;
+}
+.hero img {
+    display:block;
+    width:100%;
+    height:auto;
+    max-width:100%;
 }
 
 .catalog-layout {
@@ -905,10 +908,6 @@ summary:focus-visible {
         gap:24px;
     }
 
-    .hero {
-        height:200px;
-    }
-
     .catalog-layout {
         grid-template-columns:1fr;
     }
@@ -930,15 +929,6 @@ summary:focus-visible {
 }
 
 
-@media (max-width: 768px) {
-    .hero {
-        width:100%;
-        aspect-ratio:1417 / 452;
-        height:auto;
-        background-size:cover;
-        background-position:center center;
-    }
-}
 
 </style>
 """, unsafe_allow_html=True)
@@ -1090,14 +1080,12 @@ def render_home():
 
     safe_markdown(
         f"""
-        <div
-            class="hero"
-            style="
-                background-image:
-                    url('{escape(banner, quote=True)}');
-            "
-            aria-label="진바이크 매장 전경"
-        ></div>
+        <div class="hero">
+            <img
+                src="{escape(banner, quote=True)}"
+                alt="포천 진바이크 JIN BIKE 매장 전경"
+            >
+        </div>
         """,
         unsafe_allow_html=True
     )
