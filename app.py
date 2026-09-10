@@ -514,12 +514,12 @@ a {
 
 .hero {
     width:100%;
-    aspect-ratio:16 / 9;
+    aspect-ratio:1417 / 452;
     height:auto;
     margin-top:28px;
     border:1px solid #222;
     background-repeat:no-repeat;
-    background-size:contain;
+    background-size:cover;
     background-position:center center;
     background-color:#080808;
 }
@@ -933,9 +933,9 @@ summary:focus-visible {
 @media (max-width: 768px) {
     .hero {
         width:100%;
-        aspect-ratio:16 / 9;
+        aspect-ratio:1417 / 452;
         height:auto;
-        background-size:contain;
+        background-size:cover;
         background-position:center center;
     }
 }
