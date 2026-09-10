@@ -948,7 +948,6 @@ div[data-testid="stSelectbox"] > div > div {
 .hero {height:230px; margin-top:18px; padding:28px; position:relative;}
 .hero-title {font-size:36px;}
 .hero-eyebrow {font-size:14px; letter-spacing:2px;}
-.hero::after {content:'JIN BIKE'; position:absolute; right:24px; top:24px; font-weight:900; font-style:italic; color:white;}
 .hero-copy {font-size:14px;}
 .page-title {margin-top:22px; font-size:22px;}
 .page-subtitle {font-size:14px; color:#aaa; margin-bottom:16px;}
@@ -958,7 +957,9 @@ div[data-testid="stSelectbox"] > div > div {
 .catalog-sidebar summary {padding:16px 0; font-weight:800; cursor:pointer;}
 .catalog-sidebar a {display:block; color:#bbb; padding:9px 8px; border-bottom:1px solid #242424; overflow-wrap:anywhere;}
 .catalog-sidebar a:hover,.catalog-sidebar a.active {color:#ff6900; background:#191919;}
-.catalog-sidebar h3 {font-size:14px; margin:26px 0 12px; color:#fff;}
+.category-children {border-bottom:1px solid #242424; padding:4px 0;}
+.category-children a {border-bottom:0; padding-left:28px; color:#b9c7d4;}
+.category-children a::before {content:'ㄴ'; margin-right:7px; color:#777;}
 .catalog-results {min-width:0;}
 .grid {grid-template-columns:repeat(5,minmax(0,1fr)); gap:24px 12px;}
 .grid > a {min-width:0; color:inherit;}
@@ -986,7 +987,6 @@ a:focus-visible,summary:focus-visible {outline:2px solid #ff6900; outline-offset
  .header .fake-search {grid-column:1 / -1; grid-row:2; display:flex;}
  .logo {font-size:30px;}.navbar {justify-content:flex-start; gap:24px;}
  .hero {height:200px; padding:20px;}.hero-title {font-size:28px;}
- .hero::after {font-size:12px; right:14px; top:14px;}
  .hero-eyebrow {font-size:12px;}.hero-copy {max-width:240px;}
  .catalog-layout {grid-template-columns:1fr;}
  .catalog-sidebar:not([open]) > :not(summary) {display:none;}
@@ -1134,45 +1134,12 @@ def render_home():
     <div
         class="hero"
         style="
-            background-image:
-                linear-gradient(
-                    90deg,
-                    rgba(0,0,0,.82) 0%,
-                    rgba(0,0,0,.48) 40%,
-                    rgba(0,0,0,.08) 100%
-                ),
-                url('{escape(banner, quote=True)}');
+            background-image:url('{escape(banner, quote=True)}');
             background-position:center center;
             background-size:cover;
         "
-    >
-
-        <div>
-
-            <div class="hero-eyebrow">
-                JIN BIKE
-            </div>
-
-            <div class="hero-title">
-                RIDE YOUR<br>
-                OWN WAY.
-            </div>
-
-            <div class="hero-copy">
-                중고 바이크부터 라이딩 의류와 바이크 용품까지.<br>
-                라이더를 위한 모든 것을 한 곳에서.
-            </div>
-
-            <a
-                class="hero-btn"
-                href="?page=shop&cat=중고 바이크"
-            >
-                중고 바이크 보기 →
-            </a>
-
-        </div>
-
-    </div>
+        aria-label="진바이크 매장 전경"
+    ></div>
 
     """, unsafe_allow_html=True)
 
@@ -1186,7 +1153,6 @@ def render_home():
 def render_shop():
 
     category = get_param("cat", "전체상품")
-    brand = get_param("brand", "")
     subcategory = get_param("sub", "")
 
     if category == "전체상품":
@@ -1243,10 +1209,14 @@ def render_shop():
             label_visibility="collapsed",
         )
 
-    if brand:
-        items = [p for p in items if p.get("brand") == brand]
     if subcategory:
-        items = [p for p in items if p.get("subcategory") == subcategory]
+        wear_filters = {
+            "상의": {"상의", "티셔츠", "셔츠", "후드", "맨투맨"},
+            "바지": {"바지", "팬츠", "청바지"},
+            "자켓": {"자켓", "재킷", "라이딩 재킷"},
+        }
+        allowed = wear_filters.get(subcategory, {subcategory})
+        items = [p for p in items if p.get("subcategory") in allowed]
 
     if keyword:
 
@@ -1286,21 +1256,23 @@ def render_shop():
     def filter_link(label, **params):
         url = "?" + urlencode({"page": "shop", **params})
         active = (params.get("cat") == category and
-                  params.get("brand", "") == brand and
                   params.get("sub", "") == subcategory)
         return f'<a class="{"active" if active else ""}" href="{escape(url, quote=True)}">{escape(str(label))}</a>'
 
-    sidebar = '<details class="catalog-sidebar"><summary>카테고리 · 브랜드</summary><nav aria-label="상품 분류">'
+    is_wear = category == "바이크 의류"
+    is_gear = category == "바이크 용품"
+    sidebar = f'<details class="catalog-sidebar" {"open" if (is_wear or is_gear) else ""}><summary>카테고리</summary><nav aria-label="상품 분류">'
     for cat in ["전체상품", "중고 바이크", "바이크 의류", "바이크 용품"]:
         sidebar += filter_link(cat, cat=cat)
-    category_items = [p for p in PRODUCTS if category == "전체상품" or p.get("category") == category]
-    sidebar += '<h3>세부 분류</h3>'
-    for sub in sorted({p.get("subcategory", "") for p in category_items} - {""}):
-        sidebar += filter_link(sub, cat=category, sub=sub)
-    sidebar += '<h3>BRANDS</h3>'
-    for name in sorted({p.get("brand", "") for p in category_items} - {""}):
-        sidebar += filter_link(name, cat=category, brand=name)
-    sidebar += filter_link("필터 초기화", cat="전체상품")
+        if cat == "바이크 의류" and is_wear:
+            sidebar += '<div class="category-children">'
+            for sub in ["상의", "하의", "자켓", "장갑", "신발"]:
+                sidebar += filter_link(sub, cat="바이크 의류", sub=sub)
+            sidebar += '</div>'
+        if cat == "바이크 용품" and is_gear:
+            sidebar += '<div class="category-children">'
+            sidebar += filter_link("헬멧", cat="바이크 용품", sub="헬멧")
+            sidebar += '</div>'
     sidebar += '</nav></details>'
     results = '<div class="grid">' + ''.join(card_html(p) for p in items) + '</div>'
     if not items:
