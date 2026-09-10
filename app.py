@@ -1027,6 +1027,7 @@ safe_markdown("""
     <a href="?page=shop&cat=바이크 의류">바이크 의류</a>
     <a href="?page=shop&cat=바이크 용품">바이크 용품</a>
     <a href="?page=shop&cat=전체상품">전체상품</a>
+    <a class="sale" href="?page=admin">관리자</a>
 </div>
 """, unsafe_allow_html=True)
 
@@ -2216,18 +2217,16 @@ else:
 # FOOTER
 # =========================================================
 
-safe_markdown("""
-<div class="footer-block">
+safe_markdown(f"""
+<div class="footer-block" translate="no">
 
     {STORE_NAME}<br>
     {STORE_ADDRESS}<br>
     중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
 
-    USED MOTORCYCLE · RIDING WEAR · PARTS & GEAR<br>
-
     경기 포천 · 바이크 매물 및 상품 문의<br><br>
 
-    © JIN BIKE. ALL RIGHTS RESERVED.<br>
+    © JIN BIKE. 모든 권리 보유.<br>
     <a href="/app/static/sitemap.xml">사이트맵</a>
 
 </div>
