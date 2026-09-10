@@ -13,6 +13,12 @@ services:
         sync: false
       - key: MASPICK_ADMIN_PASSWORD
         sync: false
+      - key: SUPABASE_URL
+        value: https://rneflkpuafseaeustwuf.supabase.co
+      - key: SUPABASE_STORAGE_BUCKET
+        value: product-images
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: TRENDPICK_DATA_DIR
         value: /var/data/trendpick
     disk:
