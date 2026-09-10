@@ -514,12 +514,14 @@ a {
 
 .hero {
     width:100%;
-    height:clamp(320px, 31vw, 520px);
+    aspect-ratio:16 / 9;
+    height:auto;
     margin-top:28px;
     border:1px solid #222;
     background-repeat:no-repeat;
-    background-size:cover;
-    background-position:center 28%;
+    background-size:contain;
+    background-position:center center;
+    background-color:#080808;
 }
 
 .catalog-layout {
@@ -930,8 +932,11 @@ summary:focus-visible {
 
 @media (max-width: 768px) {
     .hero {
-        height:clamp(230px, 58vw, 360px);
-        background-position:center 24%;
+        width:100%;
+        aspect-ratio:16 / 9;
+        height:auto;
+        background-size:contain;
+        background-position:center center;
     }
 }
 
