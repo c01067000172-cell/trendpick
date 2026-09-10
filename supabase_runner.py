@@ -1,5 +1,10 @@
 from pathlib import Path
 
+import jinbike_storage_auth_patch as _jinbike_storage_auth_patch
+
+
+_jinbike_storage_auth_patch.install()
+_jinbike_storage_auth_patch.probe_storage()
 
 APP_FILE = Path(__file__).with_name("app.py")
 SOURCE = APP_FILE.read_text(encoding="utf-8")
