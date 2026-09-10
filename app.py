@@ -187,9 +187,9 @@ def save_products(products):
 
 
 def load_products():
-if not PRODUCT_FILE.exists():
-    save_products([])
-    return []
+    if not PRODUCT_FILE.exists():
+        save_products([])
+        return []
 
     try:
         data = json.loads(
