@@ -773,6 +773,10 @@ def main():
     class Checkout(tornado.web.RequestHandler):
         async def get(self, product_id):
             self.set_header("Cache-Control", "no-store")
+            origin = self.request.headers.get("Origin", "")
+            if origin:
+                self.set_header("Access-Control-Allow-Origin", origin)
+            self.set_header("Vary", "Origin")
             try:
                 product = await asyncio.to_thread(product_by_id, product_id)
             except Exception:
@@ -787,6 +791,15 @@ def main():
             self.finish(checkout_page(product))
 
     class CreateOrder(tornado.web.RequestHandler):
+        def options(self):
+            origin = self.request.headers.get("Origin", "")
+            if origin:
+                self.set_header("Access-Control-Allow-Origin", origin)
+            self.set_header("Access-Control-Allow-Headers", "Content-Type")
+            self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.set_status(204)
+            self.finish()
+
         async def post(self):
             self.set_header("Cache-Control", "no-store")
             self.set_header("Content-Type", "application/json; charset=utf-8")
