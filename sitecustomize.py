@@ -1,16 +1,13 @@
-"""JIN BIKE Render boot-time Supabase verification and narrow checkout patch.
-
-Loaded only when PYTHONPATH includes the repository. Supabase verification runs
-only for the Streamlit server process. The checkout patch exempts only the
-server-owned /api/orders/create endpoint from Streamlit's built-in XSRF token
-check; the endpoint itself still enforces same-origin and rate limiting.
-"""
+"""JIN BIKE Render boot-time Supabase verification, checkout patch, and SEO metadata."""
 
 import base64
 import json
 import os
+import re
 import sys
 import uuid
+from html import escape
+from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -141,11 +138,100 @@ def _install_checkout_xsrf_patch():
     print("[PAYMENT-XSRF] checkout endpoint patch installed", flush=True)
 
 
+def _install_twoj_seo_metadata():
+    """Strengthen homepage brand signals for Naver/Google without changing storefront UI."""
+    if not _is_streamlit_process():
+        return
+    try:
+        import streamlit
+
+        index = Path(streamlit.__file__).resolve().parent / "static" / "index.html"
+        html = index.read_text(encoding="utf-8")
+        if "</head>" not in html:
+            return
+
+        title = "투제이로드 (TWO J ROAD) | 포천 중고 바이크·바이크 의류·용품"
+        description = (
+            "포천 투제이로드(TWO J ROAD). 중고 바이크와 중고 오토바이, "
+            "바이크 의류, 라이딩 자켓·장갑·헬멧 등 바이크 용품을 확인하세요."
+        )
+        canonical = "https://www.maspick.co.kr/"
+
+        html = re.sub(r"<title\b[^>]*>.*?</title>", "", html, flags=re.I | re.S)
+        for attr, name in [
+            ("name", "description"),
+            ("name", "robots"),
+            ("property", "og:title"),
+            ("property", "og:description"),
+            ("property", "og:type"),
+            ("property", "og:site_name"),
+            ("property", "og:url"),
+            ("property", "og:locale"),
+        ]:
+            pattern = r"<meta\b(?=[^>]*\b" + attr + r"=[\"']" + re.escape(name) + r"[\"'])[^>]*>"
+            html = re.sub(pattern, "", html, flags=re.I)
+        html = re.sub(r'<link\b(?=[^>]*\brel=[\"\']canonical[\"\'])[^>]*>', '', html, flags=re.I)
+        html = re.sub(
+            r'<script\b(?=[^>]*\bid=[\"\']twoj-jsonld[\"\'])[^>]*>.*?</script>',
+            '',
+            html,
+            flags=re.I | re.S,
+        )
+
+        structured_data = {
+            "@context": "https://schema.org",
+            "@type": "Store",
+            "name": "TWO J ROAD",
+            "alternateName": ["투제이로드", "포천 투제이로드"],
+            "url": canonical,
+            "description": description,
+            "address": {
+                "@type": "PostalAddress",
+                "streetAddress": "금강로3224번길 11-7",
+                "addressLocality": "포천시 내촌면",
+                "addressRegion": "경기도",
+                "addressCountry": "KR",
+            },
+        }
+
+        metadata = (
+            "<title>" + escape(title) + "</title>\n"
+            + '<meta name="description" content="' + escape(description, quote=True) + '" />\n'
+            + '<meta name="robots" content="index,follow,max-image-preview:large" />\n'
+            + '<link rel="canonical" href="' + canonical + '" />\n'
+            + '<meta property="og:title" content="' + escape(title, quote=True) + '" />\n'
+            + '<meta property="og:description" content="' + escape(description, quote=True) + '" />\n'
+            + '<meta property="og:type" content="website" />\n'
+            + '<meta property="og:site_name" content="TWO J ROAD (투제이로드)" />\n'
+            + '<meta property="og:url" content="' + canonical + '" />\n'
+            + '<meta property="og:locale" content="ko_KR" />\n'
+            + '<script id="twoj-jsonld" type="application/ld+json">'
+            + json.dumps(structured_data, ensure_ascii=False, separators=(",", ":"))
+            + '</script>\n'
+        )
+        html = html.replace("</head>", metadata + "</head>", 1)
+        index.write_text(html, encoding="utf-8")
+        print("[TWOJ-SEO] Korean brand metadata installed", flush=True)
+    except Exception as exc:
+        print(
+            f"[TWOJ-SEO] patch failed {type(exc).__name__}: {str(exc)[:300]}",
+            flush=True,
+        )
+
+
 try:
     _install_checkout_xsrf_patch()
 except Exception as _exc:
     print(
         f"[PAYMENT-XSRF] FATAL {type(_exc).__name__}: {str(_exc)[:500]}",
+        flush=True,
+    )
+
+try:
+    _install_twoj_seo_metadata()
+except Exception as _exc:
+    print(
+        f"[TWOJ-SEO] FATAL {type(_exc).__name__}: {str(_exc)[:500]}",
         flush=True,
     )
 
