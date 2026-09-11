@@ -1097,7 +1097,47 @@ def render_home():
         unsafe_allow_html=True
     )
 
-    render_shop()
+    safe_markdown("""
+    <style>
+    .home-products{margin:28px 0 36px;min-width:0;}
+    .home-products h2{font-size:20px;margin:0 0 14px;color:#fff;}
+    .home-slider{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;
+        scroll-snap-type:x mandatory;scroll-behavior:smooth;
+        padding:0 0 14px;scrollbar-color:#ff7900 #222;scrollbar-width:auto;}
+    .home-slider>a{flex:0 0 calc((100% - 48px)/5);min-width:0;
+        scroll-snap-align:start;color:inherit;}
+    .home-slider:focus-visible{outline:2px solid #ff7900;outline-offset:4px;}
+    .home-slider::-webkit-scrollbar{height:10px;}
+    .home-slider::-webkit-scrollbar-track{background:#222;border-radius:8px;}
+    .home-slider::-webkit-scrollbar-thumb{background:#ff7900;border-radius:8px;}
+    @media(max-width:768px){
+        .home-slider>a{flex-basis:calc((100% - 12px)/2);}
+    }
+    @media(prefers-reduced-motion:reduce){.home-slider{scroll-behavior:auto;}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    for category, type_code in [
+        ("중고 바이크", "bike"),
+        ("바이크 의류", "wear"),
+        ("바이크 용품", "gear"),
+    ]:
+        items = [p for p in reversed(PRODUCTS)
+                 if p.get("category") == category
+                 or (not p.get("category") and p.get("type") == type_code)]
+        if items:
+            content = (
+                f'<div class="home-slider" tabindex="0" role="region" '
+                f'aria-label="{category} 상품, 좌우로 넘겨보기">'
+                + ''.join(card_html(p) for p in items) + '</div>'
+            )
+        else:
+            content = '<p style="color:#aaa;">등록된 상품이 없습니다.</p>'
+        safe_markdown(
+            f'<section class="home-products"><h2>{category}</h2>'
+            + content + '</section>', unsafe_allow_html=True
+        )
+
 
 
 # =========================================================
@@ -2288,7 +2328,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: 2JROAD-20260911-R2")
+    st.caption("적용 버전: 2JROAD-20260911-R3")
     top1, top2 = st.columns(
         [5, 1]
     )
