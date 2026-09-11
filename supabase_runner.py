@@ -23,11 +23,37 @@ if not _jinbike_supabase_ready:
         except Exception:
             return []
     load_products = _jinbike_safe_load_products
+else:
+    # Avoid a Supabase round-trip on every Streamlit rerun.
+    # Admin saves clear this cache immediately so changes still appear at once.
+    _jinbike_uncached_load_products = load_products
+    _jinbike_uncached_save_products = save_products
+
+    @st.cache_data(ttl=30, show_spinner=False)
+    def _jinbike_cached_load_products():
+        return _jinbike_uncached_load_products()
+
+    def _jinbike_cached_save_products(products):
+        result = _jinbike_uncached_save_products(products)
+        _jinbike_cached_load_products.clear()
+        return result
+
+    load_products = _jinbike_cached_load_products
+    save_products = _jinbike_cached_save_products
 
 PRODUCTS = load_products()"""
 
 STATUS_TARGET = 'f"관리자 로그인 상태 · 저장 위치: {PRODUCT_FILE}"'
 STATUS_REPLACEMENT = 'f"관리자 로그인 상태 · 저장 위치: {globals().get(\'SUPABASE_STATUS\', PRODUCT_FILE)}"'
+
+BANNER_TARGET = """def banner_image_src():
+    if not BANNER_FILE.exists():"""
+BANNER_REPLACEMENT = """def banner_image_src():
+    static_banner = Path(__file__).parent / \"static\" / \"jinbike_banner.webp\"
+    if static_banner.exists():
+        return \"/app/static/jinbike_banner.webp\"
+
+    if not BANNER_FILE.exists():"""
 
 if LOAD_TARGET not in SOURCE:
     raise RuntimeError("Supabase storage injection point was not found in app.py")
@@ -36,6 +62,11 @@ PATCHED_SOURCE = SOURCE.replace(LOAD_TARGET, LOAD_INJECTION, 1)
 PATCHED_SOURCE = PATCHED_SOURCE.replace(
     STATUS_TARGET,
     STATUS_REPLACEMENT,
+    1,
+)
+PATCHED_SOURCE = PATCHED_SOURCE.replace(
+    BANNER_TARGET,
+    BANNER_REPLACEMENT,
     1,
 )
 

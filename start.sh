@@ -2,6 +2,26 @@
 set -e
 
 mkdir -p static
+
+# Build a smaller browser-friendly banner once at service start.
+# The source PNG stays untouched; the site serves the generated WebP file.
+python - <<'PY'
+from pathlib import Path
+from PIL import Image
+
+src = Path("assets/jinbike_banner.png")
+dst = Path("static/jinbike_banner.webp")
+
+if src.exists():
+    with Image.open(src) as image:
+        if image.width > 1920:
+            new_height = max(1, round(image.height * 1920 / image.width))
+            image = image.resize((1920, new_height), Image.Resampling.LANCZOS)
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGB")
+        image.save(dst, "WEBP", quality=82, method=6)
+PY
+
 printf '%s\n' \
   '<?xml version="1.0" encoding="UTF-8"?>' \
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' \
@@ -17,4 +37,6 @@ exec streamlit run supabase_runner.py \
   --server.port="${PORT:-8501}" \
   --server.headless=true \
   --server.enableStaticServing=true \
+  --server.fileWatcherType=none \
+  --server.runOnSave=false \
   --browser.gatherUsageStats=false
