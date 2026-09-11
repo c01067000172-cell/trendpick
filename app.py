@@ -10,7 +10,7 @@ from textwrap import dedent
 from urllib.parse import urlencode
 
 SITE_URL = "https://www.maspick.co.kr"
-STORE_NAME = "포천 진바이크 JIN BIKE"
+STORE_NAME = "포천 2J ROAD"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 
 # =========================================================
@@ -26,27 +26,30 @@ def seo_page_info():
     page = initial_query_value("page", "home")
     category = initial_query_value("cat", "전체상품")
 
+    if page == "store":
+        return ("2J ROAD | 오프라인매장", "2J ROAD 매장 위치와 방문 안내")
+
     if page == "shop" and category == "바이크 의류":
         return (
-            "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 진바이크",
-            "포천 진바이크 JIN BIKE의 바이크 의류를 확인하세요.",
+            "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 2J ROAD",
+            "포천 2J ROAD의 바이크 의류를 확인하세요.",
         )
 
     if page == "shop" and category == "중고 바이크":
         return (
-            "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | 진바이크",
-            "포천 진바이크 JIN BIKE의 중고 바이크 매물을 확인하세요.",
+            "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | 2J ROAD",
+            "포천 2J ROAD의 중고 바이크 매물을 확인하세요.",
         )
 
     if page == "shop" and category == "바이크 용품":
         return (
-            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 진바이크",
-            "포천 진바이크 JIN BIKE의 바이크 용품을 확인하세요.",
+            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 2J ROAD",
+            "포천 2J ROAD의 바이크 용품을 확인하세요.",
         )
 
     return (
-        "포천 진바이크 JIN BIKE | 중고 오토바이·바이크 의류·라이딩 용품",
-        "포천 진바이크 JIN BIKE. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하세요.",
+        "포천 2J ROAD | 중고 오토바이·바이크 의류·라이딩 용품",
+        "포천 2J ROAD. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하세요.",
     )
 
 
@@ -310,6 +313,7 @@ def save_uploaded_images(uploaded_files, product_id):
         "image/jpeg": ".jpg",
         "image/png": ".png",
         "image/webp": ".webp",
+        "application/pdf": ".pdf",
     }
 
     for index, uploaded in enumerate(uploaded_files[:8], start=1):
@@ -474,13 +478,13 @@ a {
 }
 
 .logo::before {
-    content:"JIN";
+    content:"2J";
     color:#ff6900;
     font-weight:1000;
 }
 
 .logo::after {
-    content:" BIKE";
+    content:" ROAD";
     color:#fff;
     font-weight:1000;
 }
@@ -947,7 +951,7 @@ safe_markdown("""
             <div
                 class="logo"
                 translate="no"
-                aria-label="JIN BIKE"
+                aria-label="2J ROAD"
             ></div>
             <div class="logo-small">
                 MOTORCYCLE CULTURE
@@ -976,8 +980,8 @@ safe_markdown("""
     <a href="?page=shop&cat=바이크 용품">
         바이크 용품
     </a>
-    <a href="?page=shop&cat=전체상품">
-        전체상품
+    <a href="?page=store" target="_self">
+        오프라인매장
     </a>
 </div>
 """, unsafe_allow_html=True)
@@ -999,6 +1003,11 @@ def card_html(product):
             str(product.get("subcategory", ""))
         )
 
+    badge_text = str(product.get("badge") or "")
+    badge_html = (
+        '<div class="badge" translate="no">' + escape(badge_text) + '</div>'
+        if badge_text.strip() else ""
+    )
     demo_badge = ""
 
     if product.get("demo"):
@@ -1021,9 +1030,7 @@ def card_html(product):
                     src="{image}"
                 >
 
-                <div class="badge">
-                    {escape(str(product.get('badge','')))}
-                </div>
+                {badge_html}
 
                 {demo_badge}
             </div>
@@ -1083,7 +1090,7 @@ def render_home():
         <div class="hero">
             <img
                 src="{escape(banner, quote=True)}"
-                alt="포천 진바이크 JIN BIKE 매장 전경"
+                alt="포천 2J ROAD 매장 전경"
             >
         </div>
         """,
@@ -1230,7 +1237,7 @@ def render_shop():
 
         return (
             f'<a class="{active_class}" '
-            f'href="{escape(url, quote=True)}">'
+            f'href="{escape(url, quote=True)}" target="_self">'
             f'{escape(str(label))}</a>'
         )
 
@@ -1326,6 +1333,58 @@ def render_shop():
 # =========================================================
 # DETAIL
 # =========================================================
+
+DETAIL_PREFIX = "DOOJAY_DETAIL_V1:"
+
+
+def unpack_detail(value):
+    value = str(value or "")
+    if value.startswith(DETAIL_PREFIX):
+        try:
+            data = json.loads(value[len(DETAIL_PREFIX):])
+            if isinstance(data, dict) and isinstance(data.get("files"), list):
+                return str(data.get("text", "")), data["files"]
+        except (ValueError, TypeError):
+            pass
+    return value, []
+
+
+def pack_detail(text, files):
+    if not files:
+        return text
+    return DETAIL_PREFIX + json.dumps({"text": text, "files": files}, ensure_ascii=False)
+
+
+def upload_detail_files(files, product_id):
+    files = files or []
+    if len(files) > 8:
+        raise ValueError("상세 첨부파일은 최대 8개까지 등록할 수 있습니다.")
+    for file in files:
+        if Path(file.name).suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}:
+            raise ValueError("상세 첨부파일은 JPG, PNG, WEBP, PDF만 가능합니다.")
+        if file.size > 20 * 1024 * 1024:
+            raise ValueError("상세 첨부파일은 파일당 20MB 이하로 올려 주세요.")
+    paths = save_uploaded_images(files, product_id + "-detail")
+    return [{"name": file.name, "url": path,
+             "kind": "pdf" if Path(file.name).suffix.lower() == ".pdf" else "image"}
+            for file, path in zip(files, paths)]
+
+
+def render_detail_files(files):
+    for item in files:
+        src = image_src(item.get("url", ""))
+        if not src or not src.startswith(("https://", "http://", "data:image/", "data:application/pdf")):
+            continue
+        name = escape(str(item.get("name", "상세 첨부파일")))
+        url = escape(src, quote=True)
+        if item.get("kind") == "image":
+            safe_markdown(f'<img src="{url}" alt="{name}" loading="lazy" '
+                          'style="display:block;width:100%;height:auto;margin:12px 0;">',
+                          unsafe_allow_html=True)
+        else:
+            safe_markdown(f'<p><a href="{url}" target="_blank" rel="noopener noreferrer">'
+                          f'📎 {name} — PDF 열기</a></p>', unsafe_allow_html=True)
+
 
 def render_detail():
     product_id = get_param("id", "")
@@ -1464,12 +1523,9 @@ def render_detail():
         )
 
         st.write("")
-        st.write(
-            product.get(
-                "description",
-                ""
-            )
-        )
+        detail_text, detail_files = unpack_detail(product.get("description", ""))
+        st.write(detail_text)
+        render_detail_files(detail_files)
 
         contact_buttons = ""
 
@@ -1528,7 +1584,7 @@ def admin_login():
     safe_markdown(
         """
         <div class="page-title">
-            JIN BIKE ADMIN
+            2J ROAD 관리자
         </div>
 
         <div class="page-subtitle">
@@ -1596,14 +1652,6 @@ def render_add_product():
     )
 
     category_options = {
-        "중고 바이크": [
-            "크루저",
-            "투어링",
-            "스포츠",
-            "네이키드",
-            "스쿠터",
-            "기타",
-        ],
         "바이크 의류": [
             "상의",
             "하의",
@@ -1616,6 +1664,15 @@ def render_add_product():
             "기타",
         ],
     }
+
+    subcategory = ""
+    if product_type != "중고 바이크":
+        subcategory = st.selectbox(
+            "카테고리 선택",
+            category_options[product_type],
+            key=f"add_subcategory_{product_type}",
+            help="선택한 카테고리의 상품 목록에 표시됩니다."
+        )
 
     c1, c2 = st.columns(2)
 
@@ -1637,15 +1694,11 @@ def render_add_product():
             key="add_price"
         )
 
-        subcategory = st.selectbox(
-            "카테고리",
-            category_options[product_type],
-            key=f"add_subcategory_{product_type}"
-        )
-
         badge = st.text_input(
             "상품 배지",
-            value="NEW",
+            value="",
+            placeholder="예: 신상품, 할인중, 추천매물",
+            help="입력한 문구가 그대로 표시됩니다. 비워두면 표시하지 않습니다.",
             key="add_badge"
         )
 
@@ -1683,6 +1736,13 @@ def render_add_product():
             "상품 설명",
             height=150,
             key="add_description"
+        )
+        detail_uploads = st.file_uploader(
+            "상세내용 첨부파일",
+            type=["jpg", "jpeg", "png", "webp", "pdf"],
+            accept_multiple_files=True,
+            help="상세 이미지 또는 PDF · 최대 8개, 파일당 20MB",
+            key="add_detail_files"
         )
 
     year = ""
@@ -1765,6 +1825,12 @@ def render_add_product():
 
         product_id = uuid.uuid4().hex[:12]
 
+        try:
+            saved_detail_files = upload_detail_files(detail_uploads, product_id)
+        except Exception:
+            st.error("상세 첨부파일 저장에 실패했습니다. 파일 수·크기와 저장소 연결을 확인해 주세요.")
+            return
+
         saved_images = save_uploaded_images(
             uploaded_images,
             product_id
@@ -1788,14 +1854,14 @@ def render_add_product():
             "name": name.strip(),
             "price": int(price),
             "condition": condition,
-            "badge": badge.strip() or "NEW",
+            "badge": badge,
             "image": (
                 saved_images[0]
                 if saved_images
                 else ""
             ),
             "images": saved_images,
-            "description": description.strip(),
+            "description": pack_detail(description.strip(), saved_detail_files),
             "demo": False,
         }
 
@@ -1816,8 +1882,8 @@ def render_add_product():
             PRODUCTS
         )
 
-        st.success(
-            "상품이 등록되었습니다."
+        st.session_state["product_action_notice"] = (
+            f"상품 등록 완료 · {new_product['name']}"
         )
 
         st.rerun()
@@ -1888,7 +1954,7 @@ def render_manage_products():
         value=str(
             product.get("brand", "")
         ),
-        key="edit_brand"
+        key=f"edit_brand_{selected_id}"
     )
 
     edit_name = st.text_input(
@@ -1896,7 +1962,7 @@ def render_manage_products():
         value=str(
             product.get("name", "")
         ),
-        key="edit_name"
+        key=f"edit_name_{selected_id}"
     )
 
     edit_price = st.number_input(
@@ -1906,18 +1972,10 @@ def render_manage_products():
             product.get("price", 0)
         ),
         step=10000,
-        key="edit_price"
+        key=f"edit_price_{selected_id}"
     )
 
     edit_category_options = {
-        "중고 바이크": [
-            "크루저",
-            "투어링",
-            "스포츠",
-            "네이키드",
-            "스쿠터",
-            "기타",
-        ],
         "바이크 의류": [
             "상의",
             "하의",
@@ -1960,16 +2018,18 @@ def render_manage_products():
             current_subcategory
         )
 
-    edit_subcategory = st.selectbox(
-        "카테고리",
-        edit_options,
-        index=(
-            edit_options.index(current_subcategory)
-            if current_subcategory in edit_options
-            else 0
-        ),
-        key="edit_subcategory"
-    )
+    edit_subcategory = ""
+    if product.get("type") != "bike" and current_category != "중고 바이크":
+        edit_subcategory = st.selectbox(
+            "카테고리",
+            edit_options,
+            index=(
+                edit_options.index(current_subcategory)
+                if current_subcategory in edit_options
+                else 0
+            ),
+            key=f"edit_subcategory_{selected_id}"
+        )
 
     conditions = [
         "판매중",
@@ -1990,15 +2050,15 @@ def render_manage_products():
             if current_condition in conditions
             else 0
         ),
-        key="edit_condition"
+        key=f"edit_condition_{selected_id}"
     )
 
     edit_badge = st.text_input(
-        "배지",
+        "상품 배지",
         value=str(
             product.get("badge", "")
         ),
-        key="edit_badge"
+        key=f"edit_badge_{selected_id}"
     )
 
     current_images = product_images(
@@ -2020,7 +2080,7 @@ def render_manage_products():
         ],
         accept_multiple_files=True,
         help="새 사진을 선택하면 기존 사진 전체가 교체됩니다.",
-        key="edit_uploaded_images"
+        key=f"edit_uploaded_images_{selected_id}"
     )
 
     edit_image = st.text_input(
@@ -2030,19 +2090,23 @@ def render_manage_products():
             if current_images
             else ""
         ),
-        key="edit_image"
+        key=f"edit_image_{selected_id}"
     )
 
+    current_detail_text, current_detail_files = unpack_detail(product.get("description", ""))
     edit_description = st.text_area(
-        "설명",
-        value=str(
-            product.get(
-                "description",
-                ""
-            )
-        ),
-        height=140,
-        key="edit_description"
+        "상품 설명", value=current_detail_text, height=140,
+        key=f"edit_description_{selected_id}"
+    )
+    if current_detail_files:
+        st.caption("현재 상세 첨부파일: " + ", ".join(item.get("name", "파일") for item in current_detail_files))
+    remove_detail_files = st.checkbox("기존 상세 첨부파일 삭제", key=f"remove_detail_{selected_id}")
+    replacement_detail_files = st.file_uploader(
+        "상세내용 첨부파일 추가 / 교체",
+        type=["jpg", "jpeg", "png", "webp", "pdf"],
+        accept_multiple_files=True,
+        help="새 파일을 올리면 기존 상세 첨부파일을 교체합니다. 최대 8개, 파일당 20MB",
+        key=f"edit_detail_files_{selected_id}"
     )
 
     bike_values = {}
@@ -2060,7 +2124,7 @@ def render_manage_products():
                 value=str(
                     product.get("year", "")
                 ),
-                key="edit_year"
+                key=f"edit_year_{selected_id}"
             )
 
             bike_values["region"] = st.text_input(
@@ -2068,7 +2132,7 @@ def render_manage_products():
                 value=str(
                     product.get("region", "")
                 ),
-                key="edit_region"
+                key=f"edit_region_{selected_id}"
             )
 
         with e2:
@@ -2077,7 +2141,7 @@ def render_manage_products():
                 value=str(
                     product.get("mileage", "")
                 ),
-                key="edit_mileage"
+                key=f"edit_mileage_{selected_id}"
             )
 
             bike_values["accident"] = st.text_input(
@@ -2085,7 +2149,7 @@ def render_manage_products():
                 value=str(
                     product.get("accident", "")
                 ),
-                key="edit_accident"
+                key=f"edit_accident_{selected_id}"
             )
 
         with e3:
@@ -2094,7 +2158,7 @@ def render_manage_products():
                 value=str(
                     product.get("cc", "")
                 ),
-                key="edit_cc"
+                key=f"edit_cc_{selected_id}"
             )
 
     b1, b2 = st.columns(2)
@@ -2109,7 +2173,7 @@ def render_manage_products():
             product["price"] = int(edit_price)
             product["subcategory"] = edit_subcategory.strip()
             product["condition"] = edit_condition
-            product["badge"] = edit_badge.strip()
+            product["badge"] = edit_badge
 
             if replacement_images:
                 if len(replacement_images) > 8:
@@ -2152,9 +2216,16 @@ def render_manage_products():
                         edit_image.strip()
                     )
 
-            product["description"] = (
-                edit_description.strip()
-            )
+            detail_files = [] if remove_detail_files else current_detail_files
+            if replacement_detail_files:
+                try:
+                    detail_files = upload_detail_files(replacement_detail_files, str(selected_id))
+                except Exception:
+                    st.error("상세 첨부파일 저장에 실패했습니다. 파일 수·크기와 저장소 연결을 확인해 주세요.")
+                    return
+            if replacement_detail_files or remove_detail_files:
+                delete_local_images({"images": [item["url"] for item in current_detail_files]})
+            product["description"] = pack_detail(edit_description.strip(), detail_files)
 
             for key, value in bike_values.items():
                 product[key] = value.strip()
@@ -2165,8 +2236,8 @@ def render_manage_products():
                 PRODUCTS
             )
 
-            st.success(
-                "수정되었습니다."
+            st.session_state["product_action_notice"] = (
+                f"상품 수정 완료 · {product.get('name', '')}"
             )
 
             st.rerun()
@@ -2174,7 +2245,7 @@ def render_manage_products():
     with b2:
         confirm_delete = st.checkbox(
             "삭제 확인",
-            key="delete_confirm"
+            key=f"delete_confirm_{selected_id}"
         )
 
         if st.button(
@@ -2187,6 +2258,8 @@ def render_manage_products():
                 )
 
             else:
+                _, deleted_detail_files = unpack_detail(product.get("description", ""))
+                delete_local_images({"images": [item["url"] for item in deleted_detail_files]})
                 delete_local_images(
                     product
                 )
@@ -2200,8 +2273,8 @@ def render_manage_products():
                     PRODUCTS
                 )
 
-                st.success(
-                    "삭제되었습니다."
+                st.session_state["product_action_notice"] = (
+                    f"상품 삭제 완료 · {product.get('name', '')}"
                 )
 
                 st.rerun()
@@ -2215,6 +2288,7 @@ def render_admin():
     if not admin_login():
         return
 
+    st.caption("적용 버전: 2JROAD-20260911-R2")
     top1, top2 = st.columns(
         [5, 1]
     )
@@ -2235,6 +2309,17 @@ def render_admin():
 
             st.rerun()
 
+    notice = st.session_state.get("product_action_notice")
+    if notice:
+        notice_area, dismiss_area = st.columns([5, 1])
+        with dismiss_area:
+            dismiss_notice = st.button("확인", key="dismiss_product_notice")
+        if dismiss_notice:
+            st.session_state.pop("product_action_notice", None)
+        else:
+            with notice_area:
+                st.success(notice)
+
     tab1, tab2 = st.tabs(
         [
             "상품 등록",
@@ -2247,6 +2332,29 @@ def render_admin():
 
     with tab2:
         render_manage_products()
+
+
+def render_offline_store():
+    from urllib.parse import quote
+
+    st.subheader("오프라인매장")
+    banner = banner_image_src()
+    if banner:
+        safe_markdown(
+            f'<img src="{escape(banner, quote=True)}" alt="2J ROAD 매장 전경" '
+            'style="display:block;width:100%;height:auto;margin-bottom:24px;">',
+            unsafe_allow_html=True
+        )
+    st.write(STORE_NAME)
+    st.write(STORE_ADDRESS)
+    map_url = "https://map.naver.com/p/search/" + quote(STORE_ADDRESS, safe="")
+    safe_markdown(
+        f'<a class="contact-btn primary" href="{escape(map_url, quote=True)}" '
+        'target="_blank" rel="noopener noreferrer">네이버 지도에서 위치 보기</a>',
+        unsafe_allow_html=True
+    )
+    if MASPICK_PHONE:
+        st.write("매장 문의: " + MASPICK_PHONE)
 
 
 # =========================================================
@@ -2266,6 +2374,9 @@ elif page == "detail":
 
 elif page == "admin":
     render_admin()
+
+elif page == "store":
+    render_offline_store()
 
 else:
     render_home()
@@ -2289,7 +2400,7 @@ safe_markdown(
         경기 포천 · 바이크 매물 및 상품 문의
         <br><br>
 
-        © JIN BIKE. 모든 권리 보유.<br>
+        © 2J ROAD. 모든 권리 보유.<br>
 
         <a href="/app/static/sitemap.xml">
             사이트맵
