@@ -1352,37 +1352,58 @@ def render_detail():
     with left:
         images = product_images(product)
 
-        if images:
-            first_src = image_src(images[0])
-
+        sources = [image_src(value) for value in images]
+        sources = [src for src in sources if src]
+        if sources:
+            # Native radio controls switch photos without navigation or a rerun.
+            gallery_id = "gallery-" + uuid.uuid4().hex
+            controls, photos, thumbs, rules = [], [], [], []
+            for index, src in enumerate(sources):
+                photo_id = f"{gallery_id}-{index}"
+                escaped_src = escape(src, quote=True)
+                checked = " checked" if index == 0 else ""
+                controls.append(
+                    f'<input class="gallery-choice" type="radio" '
+                    f'name="{gallery_id}" id="{photo_id}" '
+                    f'aria-label="상품 사진 {index + 1}"{checked}>'
+                )
+                photos.append(
+                    f'<img class="gallery-main photo-{index}" '
+                    f'src="{escaped_src}" alt="상품 사진 {index + 1}">'
+                )
+                thumbs.append(
+                    f'<label class="gallery-thumb thumb-{index}" '
+                    f'for="{photo_id}" title="사진 {index + 1} 보기">'
+                    f'<img src="{escaped_src}" alt="사진 {index + 1}"></label>'
+                )
+                rules.append(
+                    f'#{photo_id}:checked ~ .gallery-stage .photo-{index}'
+                    '{display:block;}'
+                    f'#{photo_id}:checked ~ .gallery-thumbs .thumb-{index}'
+                    '{border-color:#ff7900;}'
+                    f'#{photo_id}:focus-visible ~ .gallery-thumbs .thumb-{index}'
+                    '{outline:3px solid white;outline-offset:2px;}'
+                )
             safe_markdown(
-                f"""
-                <img
-                    class="detail-photo"
-                    src="{escape(first_src, quote=True)}"
-                >
-                """,
+                '<style>'
+                '.product-gallery{position:relative;width:100%;}'
+                '.gallery-choice{position:absolute;width:1px;height:1px;'
+                'opacity:0;overflow:hidden;}'
+                '.gallery-stage{width:100%;aspect-ratio:1;background:#111;}'
+                '.gallery-main{display:none;width:100%;height:100%;object-fit:contain;}'
+                '.gallery-thumbs{display:flex;gap:8px;overflow-x:auto;padding:10px 3px;}'
+                '.gallery-thumb{display:block;flex:0 0 72px;height:72px;cursor:pointer;'
+                'border:2px solid #444;border-radius:3px;overflow:hidden;}'
+                '.gallery-thumb img{width:100%;height:100%;object-fit:cover;}'
+                + ''.join(rules) + '</style>'
+                + '<div class="product-gallery" role="group" aria-label="상품 사진">'
+                + ''.join(controls)
+                + '<div class="gallery-stage">' + ''.join(photos) + '</div>'
+                + ('<div class="gallery-thumbs">' + ''.join(thumbs) + '</div>'
+                   if len(sources) > 1 else '')
+                + '</div>',
                 unsafe_allow_html=True
             )
-
-            if len(images) > 1:
-                gallery = '<div class="detail-gallery">'
-
-                for image_value in images[1:8]:
-                    src = image_src(image_value)
-
-                    if src:
-                        gallery += (
-                            '<img class="detail-thumb" '
-                            f'src="{escape(src, quote=True)}">'
-                        )
-
-                gallery += "</div>"
-
-                safe_markdown(
-                    gallery,
-                    unsafe_allow_html=True
-                )
         else:
             st.info(
                 "등록된 상품 사진이 없습니다."
