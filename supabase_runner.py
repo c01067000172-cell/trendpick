@@ -39,6 +39,12 @@ PATCHED_SOURCE = PATCHED_SOURCE.replace(
     1,
 )
 
+# Store brand normalization for the deployed storefront.
+# Keep all customer-facing labels, SEO text, admin title, footer and logo consistent.
+PATCHED_SOURCE = PATCHED_SOURCE.replace("2J ROAD", "TWO J ROAD")
+PATCHED_SOURCE = PATCHED_SOURCE.replace('content:"2J";', 'content:"TWO J";')
+PATCHED_SOURCE = PATCHED_SOURCE.replace("2JROAD", "TWOJROAD")
+
 namespace = {
     "__name__": "__main__",
     "__file__": str(APP_FILE),
