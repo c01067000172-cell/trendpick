@@ -16,6 +16,25 @@ if "</head>" not in html:
 html = re.sub(r'<meta\b(?=[^>]*\bname=[\"\']naver-site-verification[\"\'])[^>]*>', '', html, flags=re.I)
 tag = '<meta name="naver-site-verification" content="9f3ca97a7b93c85fbea2d89bd64466f9e891c066" />'
 html = html.replace("</head>", tag + "\n</head>", 1)
+# Metadata must exist before Streamlit's browser code runs.
+from html import escape
+page_title = "TWO J ROAD | 바이크 의류·오토바이 자켓·장갑·헬멧"
+page_description = "포천 TWO J ROAD에서 중고 바이크, 바이크 의류, 오토바이 자켓과 장갑, 헬멧 등 라이딩 용품을 확인하세요."
+html = re.sub(r"<title\b[^>]*>.*?</title>", "", html, flags=re.I | re.S)
+for attr, name in [("name", "description"), ("property", "og:title"),
+                   ("property", "og:description"), ("property", "og:type"),
+                   ("property", "og:site_name")]:
+    pattern = r"<meta\b(?=[^>]*\b" + attr + r"=[\"']" + re.escape(name) + r"[\"'])[^>]*>"
+    html = re.sub(pattern, "", html, flags=re.I)
+metadata = (
+    "<title>" + escape(page_title) + "</title>\n"
+    + '<meta name="description" content="' + escape(page_description, quote=True) + '" />\n'
+    + '<meta property="og:title" content="' + escape(page_title, quote=True) + '" />\n'
+    + '<meta property="og:description" content="' + escape(page_description, quote=True) + '" />\n'
+    + '<meta property="og:type" content="website" />\n'
+    + '<meta property="og:site_name" content="TWO J ROAD" />\n'
+)
+html = html.replace("</head>", metadata + "</head>", 1)
 index.write_text(html, encoding="utf-8")
 print("Naver ownership verification tag installed")
 NAVER_VERIFY
