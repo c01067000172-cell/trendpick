@@ -714,12 +714,23 @@ def _allow_order_attempt(ip):
     return True
 
 
+ALLOWED_HOSTS = {
+    "www.maspick.co.kr",
+    "maspick.co.kr",
+}
+
 def _same_origin(request):
     origin = request.headers.get("Origin")
     if not origin:
         return True
     try:
-        return urlparse(origin).netloc.lower() == request.host.lower()
+        origin_host = (urlparse(origin).hostname or "").lower()
+        forwarded_host = (
+            request.headers.get("X-Forwarded-Host")
+            or request.headers.get("Host")
+            or ""
+        ).split(",",1)[0].strip().lower()
+        return origin_host in ALLOWED_HOSTS and forwarded_host in ALLOWED_HOSTS
     except Exception:
         return False
 
