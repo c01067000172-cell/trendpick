@@ -1130,6 +1130,24 @@ def render_home():
     </style>
     """, unsafe_allow_html=True)
 
+    def home_category_link(label, category, sub=None):
+        params = {"page": "shop", "cat": category}
+        if sub:
+            params["sub"] = sub
+        url = escape("?" + urlencode(params), quote=True)
+        return f'<a href="{url}" target="_self">{escape(label)}</a>'
+
+    sidebar = '<details class="catalog-sidebar" open><summary>카테고리</summary><nav aria-label="상품 분류">'
+    sidebar += home_category_link("전체상품", "전체상품")
+    sidebar += home_category_link("중고 바이크", "중고 바이크")
+    for label, children in [("바이크 의류", ["상의", "하의", "자켓", "장갑", "신발"]),
+                            ("바이크 용품", ["헬멧"])]:
+        sidebar += f'<details class="category-node"><summary>{label}</summary><div class="category-children">'
+        sidebar += ''.join(home_category_link(child, label, child) for child in children)
+        sidebar += '</div></details>'
+    sidebar += '</nav></details>'
+    sections = []
+
     for category, type_code in [
         ("중고 바이크", "bike"),
         ("바이크 의류", "wear"),
@@ -1146,10 +1164,15 @@ def render_home():
             )
         else:
             content = '<p style="color:#aaa;">등록된 상품이 없습니다.</p>'
-        safe_markdown(
+        sections.append(
             f'<section class="home-products"><h2>{category}</h2>'
-            + content + '</section>', unsafe_allow_html=True
+            + content + '</section>'
         )
+    safe_markdown(
+        '<div class="catalog-layout">' + sidebar
+        + '<div class="catalog-results">' + ''.join(sections) + '</div></div>',
+        unsafe_allow_html=True
+    )
 
 
 
@@ -2431,7 +2454,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260911-R7")
+    st.caption("적용 버전: TWOJROAD-20260911-R8")
     top1, top2 = st.columns(
         [5, 1]
     )
