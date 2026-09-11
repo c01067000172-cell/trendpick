@@ -2431,7 +2431,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260911-R5")
+    st.caption("적용 버전: TWOJROAD-20260911-R7")
     top1, top2 = st.columns(
         [5, 1]
     )
@@ -2548,6 +2548,7 @@ safe_markdown(
 
         © TWO J ROAD. 모든 권리 보유.<br>
 
+        <a href="/catalog/wear" target="_self">상품 안내</a> ·
         <a href="/app/static/sitemap.xml">
             사이트맵
         </a>
