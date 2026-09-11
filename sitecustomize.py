@@ -1,8 +1,9 @@
-"""JIN BIKE Render boot-time Supabase verification.
+"""JIN BIKE Render boot-time Supabase verification and narrow checkout patch.
 
-Loaded only when PYTHONPATH includes the repository. It deliberately runs only
-for the Streamlit server process, never for pip/build helper processes. The
-secret value itself is never logged.
+Loaded only when PYTHONPATH includes the repository. Supabase verification runs
+only for the Streamlit server process. The checkout patch exempts only the
+server-owned /api/orders/create endpoint from Streamlit's built-in XSRF token
+check; the endpoint itself still enforces same-origin and rate limiting.
 """
 
 import base64
@@ -10,6 +11,7 @@ import json
 import os
 import sys
 import uuid
+from urllib.parse import urlparse
 
 
 def _is_streamlit_process():
@@ -100,6 +102,52 @@ def _verify():
             flush=True,
         )
 
+
+def _install_checkout_xsrf_patch():
+    """Keep Streamlit XSRF protection except for our same-origin order API."""
+    try:
+        import tornado.web
+    except Exception as exc:
+        print(
+            f"[PAYMENT-XSRF] patch import failed {type(exc).__name__}: {str(exc)[:300]}",
+            flush=True,
+        )
+        return
+
+    handler_cls = tornado.web.RequestHandler
+    if getattr(handler_cls, "_twoj_checkout_xsrf_patched", False):
+        return
+
+    original = handler_cls.check_xsrf_cookie
+
+    def patched_check_xsrf_cookie(self):
+        request = getattr(self, "request", None)
+        path = getattr(request, "path", "") if request is not None else ""
+        if path == "/api/orders/create":
+            origin = request.headers.get("Origin", "").strip()
+            if origin:
+                try:
+                    if urlparse(origin).netloc.lower() != request.host.lower():
+                        raise tornado.web.HTTPError(403, "Cross-origin checkout request blocked")
+                except tornado.web.HTTPError:
+                    raise
+                except Exception:
+                    raise tornado.web.HTTPError(403, "Invalid checkout origin")
+            return None
+        return original(self)
+
+    handler_cls.check_xsrf_cookie = patched_check_xsrf_cookie
+    handler_cls._twoj_checkout_xsrf_patched = True
+    print("[PAYMENT-XSRF] checkout endpoint patch installed", flush=True)
+
+
+try:
+    _install_checkout_xsrf_patch()
+except Exception as _exc:
+    print(
+        f"[PAYMENT-XSRF] FATAL {type(_exc).__name__}: {str(_exc)[:500]}",
+        flush=True,
+    )
 
 try:
     _verify()
