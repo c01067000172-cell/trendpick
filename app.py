@@ -10,7 +10,7 @@ from textwrap import dedent
 from urllib.parse import urlencode
 
 SITE_URL = "https://www.maspick.co.kr"
-STORE_NAME = "포천 2J ROAD"
+STORE_NAME = "포천 TWO J ROAD"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 
 # =========================================================
@@ -27,29 +27,42 @@ def seo_page_info():
     category = initial_query_value("cat", "전체상품")
 
     if page == "store":
-        return ("2J ROAD | 오프라인매장", "2J ROAD 매장 위치와 방문 안내")
+        return ("TWO J ROAD | 오프라인매장", "TWO J ROAD 매장 위치와 방문 안내")
+
+    subcategory = initial_query_value("sub", "")
+    category_titles = {
+        "자켓": ("바이크 자켓·오토바이 자켓 | TWO J ROAD", "TWO J ROAD의 바이크 자켓과 오토바이 라이딩 자켓을 확인하세요."),
+        "장갑": ("오토바이 장갑·바이크 장갑 | TWO J ROAD", "TWO J ROAD의 오토바이 장갑과 바이크 장갑을 확인하세요."),
+        "하의": ("바이크 바지·라이딩 팬츠 | TWO J ROAD", "TWO J ROAD의 바이크 바지와 라이딩 팬츠를 확인하세요."),
+        "신발": ("바이크 신발·부츠 | TWO J ROAD", "TWO J ROAD의 바이크 신발과 부츠를 확인하세요."),
+        "상의": ("바이크 의류·상의 | TWO J ROAD", "TWO J ROAD의 바이크 상의를 확인하세요."),
+    }
+    if page == "shop" and category == "바이크 의류" and subcategory in category_titles:
+        return category_titles[subcategory]
+    if page == "shop" and category == "바이크 용품" and subcategory == "헬멧":
+        return ("오토바이 헬멧·바이크 헬멧 | TWO J ROAD", "TWO J ROAD의 오토바이 헬멧을 확인하세요.")
 
     if page == "shop" and category == "바이크 의류":
         return (
-            "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 2J ROAD",
-            "포천 2J ROAD의 바이크 의류를 확인하세요.",
+            "바이크 의류 | 라이딩 자켓·팬츠·글러브 | 포천 TWO J ROAD",
+            "포천 TWO J ROAD의 바이크 의류를 확인하세요.",
         )
 
     if page == "shop" and category == "중고 바이크":
         return (
-            "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | 2J ROAD",
-            "포천 2J ROAD의 중고 바이크 매물을 확인하세요.",
+            "포천 중고 바이크 | 할리데이비슨·중고 오토바이 | TWO J ROAD",
+            "포천 TWO J ROAD의 중고 바이크 매물을 확인하세요.",
         )
 
     if page == "shop" and category == "바이크 용품":
         return (
-            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 2J ROAD",
-            "포천 2J ROAD의 바이크 용품을 확인하세요.",
+            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 TWO J ROAD",
+            "포천 TWO J ROAD의 바이크 용품을 확인하세요.",
         )
 
     return (
-        "포천 2J ROAD | 중고 오토바이·바이크 의류·라이딩 용품",
-        "포천 2J ROAD. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하세요.",
+        "포천 TWO J ROAD | 중고 오토바이·바이크 의류·라이딩 용품",
+        "포천 TWO J ROAD. 중고 오토바이와 바이크 의류, 라이딩 용품을 확인하세요.",
     )
 
 
@@ -478,7 +491,7 @@ a {
 }
 
 .logo::before {
-    content:"2J";
+    content:"TWO J";
     color:#ff6900;
     font-weight:1000;
 }
@@ -951,7 +964,7 @@ safe_markdown("""
             <div
                 class="logo"
                 translate="no"
-                aria-label="2J ROAD"
+                aria-label="TWO J ROAD"
             ></div>
             <div class="logo-small">
                 MOTORCYCLE CULTURE
@@ -1090,7 +1103,7 @@ def render_home():
         <div class="hero">
             <img
                 src="{escape(banner, quote=True)}"
-                alt="포천 2J ROAD 매장 전경"
+                alt="포천 TWO J ROAD 매장 전경"
             >
         </div>
         """,
@@ -1624,7 +1637,7 @@ def admin_login():
     safe_markdown(
         """
         <div class="page-title">
-            2J ROAD 관리자
+            TWO J ROAD 관리자
         </div>
 
         <div class="page-subtitle">
@@ -2396,6 +2409,9 @@ def render_site_status():
     st.link_button("네이버 서치어드바이저 열기", "https://searchadvisor.naver.com/")
     st.info("현재 상품 화면은 실행 후 표시되는 구조입니다. 검색 최적화는 검색 로봇이 받는 원본 HTML의 상품 정보·제목·설명까지 확인해야 합니다.")
     st.markdown("#### 실제 검색량으로 키워드 비교")
+    st.caption("출처: 사용자가 제공한 네이버 연관키워드 20260911 2014.xlsx · 월간 PC+모바일 검색수 · 실시간 수치 아님")
+    st.dataframe([{'키워드': '바이크자켓', 'PC': 370, '모바일': 1670, '월간 합계': 2040}, {'키워드': '오토바이자켓', 'PC': 250, '모바일': 960, '월간 합계': 1210}, {'키워드': '라이딩자켓', 'PC': 160, '모바일': 660, '월간 합계': 820}, {'키워드': '오토바이장갑', 'PC': 670, '모바일': 2490, '월간 합계': 3160}, {'키워드': '바이크장갑', 'PC': 550, '모바일': 2480, '월간 합계': 3030}, {'키워드': '바이크부츠', 'PC': 310, '모바일': 1410, '월간 합계': 1720}, {'키워드': '바이크바지', 'PC': 110, '모바일': 680, '월간 합계': 790}, {'키워드': '바이크의류', 'PC': 80, '모바일': 270, '월간 합계': 350}, {'키워드': '오토바이의류', 'PC': 60, '모바일': 160, '월간 합계': 220}, {'키워드': '오토바이헬멧', 'PC': 4280, '모바일': 19100, '월간 합계': 23380}], hide_index=True, use_container_width=True)
+
     st.write("조회 후보: 바이크의류, 오토바이의류, 라이딩자켓, 오토바이자켓, 오토바이장갑, 오토바이헬멧")
     st.caption("후보는 검색량 순위가 아닙니다. 취급 상품과 맞는 키워드만 선택하세요. 광고 경쟁도는 자연검색 경쟁도와 다릅니다.")
     st.link_button("네이버 검색광고 키워드 도구로 이동", "https://searchad.naver.com/")
@@ -2415,7 +2431,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: 2JROAD-20260911-R4")
+    st.caption("적용 버전: TWOJROAD-20260911-R5")
     top1, top2 = st.columns(
         [5, 1]
     )
@@ -2471,7 +2487,7 @@ def render_offline_store():
     banner = banner_image_src()
     if banner:
         safe_markdown(
-            f'<img src="{escape(banner, quote=True)}" alt="2J ROAD 매장 전경" '
+            f'<img src="{escape(banner, quote=True)}" alt="TWO J ROAD 매장 전경" '
             'style="display:block;width:100%;height:auto;margin-bottom:24px;">',
             unsafe_allow_html=True
         )
@@ -2530,7 +2546,7 @@ safe_markdown(
         경기 포천 · 바이크 매물 및 상품 문의
         <br><br>
 
-        © 2J ROAD. 모든 권리 보유.<br>
+        © TWO J ROAD. 모든 권리 보유.<br>
 
         <a href="/app/static/sitemap.xml">
             사이트맵
