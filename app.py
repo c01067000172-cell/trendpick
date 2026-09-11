@@ -2324,11 +2324,98 @@ def render_manage_products():
 # ADMIN
 # =========================================================
 
+def read_keyword_report(raw):
+    import csv
+    import io
+    import re
+
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp949")
+    normalize = lambda value: re.sub(r"[\s_()（）]", "", str(value)).lower()
+    lines = text.splitlines()
+    header = next((i for i, line in enumerate(lines)
+                   if "키워드" in line or "relKeyword" in line), None)
+    if header is None:
+        raise ValueError("키워드 열을 찾지 못했습니다. 첫 행에 키워드와 PC·모바일 검색수 열이 필요합니다.")
+    content = "\n".join(lines[header:])
+    delimiter = "\t" if "\t" in lines[header] else ","
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+    names = {normalize(name): name for name in (reader.fieldnames or [])}
+    def field(aliases):
+        return next((names[a] for a in aliases if a in names), None)
+    keyword = field(["키워드", "연관키워드", "relkeyword"])
+    pc = field(["월간검색수pc", "pc월간검색수", "pc검색수", "monthlypcqccnt"])
+    mobile = field(["월간검색수모바일", "모바일월간검색수", "모바일검색수", "monthlymobileqccnt"])
+    if not all([keyword, pc, mobile]):
+        raise ValueError("필수 열: 키워드, 월간검색수(PC), 월간검색수(모바일)")
+    def count(value):
+        value = str(value or "").replace(",", "").replace(" ", "")
+        if value.startswith("<") and value[1:].isdigit():
+            return 0, max(0, int(value[1:]) - 1)
+        if value.isdigit():
+            return int(value), int(value)
+        raise ValueError("검색수에 숫자 또는 <10 형식 이외의 값이 있습니다.")
+    result = []
+    for row in reader:
+        name = str(row.get(keyword) or "").strip()
+        if not name:
+            continue
+        lo1, hi1 = count(row.get(pc))
+        lo2, hi2 = count(row.get(mobile))
+        low, high = lo1 + lo2, hi1 + hi2
+        result.append({"키워드": name, "PC 검색수": row[pc], "모바일 검색수": row[mobile],
+                       "합계": str(low) if low == high else f"{low}~{high}",
+                       "_low": low})
+    result.sort(key=lambda row: row["_low"], reverse=True)
+    return [{k: v for k, v in row.items() if k != "_low"} for row in result]
+
+
+def render_site_status():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    st.subheader("사이트 현황")
+    st.caption("상품 데이터 조회 시각: " + datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M"))
+    actual = [p for p in PRODUCTS if not p.get("demo")]
+    columns = st.columns(4)
+    columns[0].metric("등록 상품", len(actual))
+    for column, category in zip(columns[1:], ["중고 바이크", "바이크 의류", "바이크 용품"]):
+        column.metric(category, sum(p.get("category") == category for p in actual))
+    st.write("상품 저장 연결: " + str(globals().get("SUPABASE_STATUS", "로컬 파일 저장")))
+    st.caption("이 수치는 등록 상품 수이며 방문자·조회수와는 다릅니다.")
+    st.markdown("#### 검색 준비 상태")
+    st.dataframe([
+        {"항목": "상품 설명 없는 상품", "상태": str(sum(not any(unpack_detail(p.get("description", ""))) for p in actual)) + "개"},
+        {"항목": "사진 없는 상품", "상태": str(sum(not product_images(p) for p in actual)) + "개"},
+        {"항목": "페이지 제목", "상태": "카테고리별 제목 설정됨"},
+        {"항목": "검색용 설명 메타 태그", "상태": "원본 HTML 적용 필요"},
+        {"항목": "네이버 소유 확인·수집·색인", "상태": "서치어드바이저 확인 필요"},
+        {"항목": "검색 노출·클릭·방문자", "상태": "통계 연결 전 · 미측정"},
+    ], hide_index=True, use_container_width=True)
+    st.link_button("네이버 서치어드바이저 열기", "https://searchadvisor.naver.com/")
+    st.info("현재 상품 화면은 실행 후 표시되는 구조입니다. 검색 최적화는 검색 로봇이 받는 원본 HTML의 상품 정보·제목·설명까지 확인해야 합니다.")
+    st.markdown("#### 실제 검색량으로 키워드 비교")
+    st.write("조회 후보: 바이크의류, 오토바이의류, 라이딩자켓, 오토바이자켓, 오토바이장갑, 오토바이헬멧")
+    st.caption("후보는 검색량 순위가 아닙니다. 취급 상품과 맞는 키워드만 선택하세요. 광고 경쟁도는 자연검색 경쟁도와 다릅니다.")
+    st.link_button("네이버 검색광고 키워드 도구로 이동", "https://searchad.naver.com/")
+    report = st.file_uploader("키워드 도구 검색량 CSV", type=["csv"], key="keyword_volume_csv",
+                              help="필수 열: 키워드, 월간검색수(PC), 월간검색수(모바일). UTF-8 또는 CP949 CSV")
+    st.caption("보고서의 조회 기간을 기준으로 비교합니다. 실시간 검색량이 아니며 파일은 이 화면에서만 분석합니다.")
+    if report:
+        try:
+            rows = read_keyword_report(report.getvalue())
+            st.dataframe(rows, hide_index=True, use_container_width=True)
+            st.caption("PC+모바일 합계순. <10은 0~9 범위로 유지하며 범위의 최솟값으로 정렬합니다.")
+        except (ValueError, UnicodeError) as error:
+            st.error(str(error))
+
+
 def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: 2JROAD-20260911-R3")
+    st.caption("적용 버전: 2JROAD-20260911-R4")
     top1, top2 = st.columns(
         [5, 1]
     )
@@ -2360,10 +2447,11 @@ def render_admin():
             with notice_area:
                 st.success(notice)
 
-    tab1, tab2 = st.tabs(
+    tab1, tab2, tab3 = st.tabs(
         [
             "상품 등록",
             "상품 수정 · 삭제",
+            "사이트 현황",
         ]
     )
 
@@ -2372,6 +2460,8 @@ def render_admin():
 
     with tab2:
         render_manage_products()
+    with tab3:
+        render_site_status()
 
 
 def render_offline_store():
