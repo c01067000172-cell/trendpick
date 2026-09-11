@@ -3,6 +3,24 @@ set -e
 
 mkdir -p static
 
+# Install the Naver verification tag in the initial server HTML.
+python - <<'NAVER_VERIFY'
+from pathlib import Path
+import re
+import streamlit
+
+index = Path(streamlit.__file__).resolve().parent / "static" / "index.html"
+html = index.read_text(encoding="utf-8")
+if "</head>" not in html:
+    raise RuntimeError("Streamlit index.html head was not found")
+html = re.sub(r'<meta\b(?=[^>]*\bname=[\"\']naver-site-verification[\"\'])[^>]*>', '', html, flags=re.I)
+tag = '<meta name="naver-site-verification" content="9f3ca97a7b93c85fbea2d89bd64466f9e891c066" />'
+html = html.replace("</head>", tag + "\n</head>", 1)
+index.write_text(html, encoding="utf-8")
+print("Naver ownership verification tag installed")
+NAVER_VERIFY
+
+
 # Build a smaller browser-friendly banner once at service start.
 # The source PNG stays untouched; the site serves the generated WebP file.
 python - <<'PY'
