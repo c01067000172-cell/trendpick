@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import json
 import uuid
+import time
 import base64
 import mimetypes
 from pathlib import Path
@@ -1032,7 +1033,7 @@ def card_html(product):
     )
 
     return dedent(f"""
-    <a href="?page=detail&id={escape(str(product.get('id','')))}">
+    <a href="{escape(detail_href(product.get('id','')), quote=True)}" target="_self">
         <div class="card">
 
             <div class="card-imgbox">
@@ -1425,10 +1426,26 @@ def unpack_detail(value):
     return value, []
 
 
-def pack_detail(text, files):
-    if not files:
+def pack_detail(text, files, extras=None):
+    extras = {k: v for k, v in (extras or {}).items() if str(v or "").strip()}
+    if not files and not extras:
         return text
-    return DETAIL_PREFIX + json.dumps({"text": text, "files": files}, ensure_ascii=False)
+    data = {"text": text, "files": files or []}
+    data.update(extras)
+    return DETAIL_PREFIX + json.dumps(data, ensure_ascii=False)
+
+
+def unpack_extras(value):
+    """상품 설명에 함께 저장한 사이즈표(size_table)·세탁정보(care)."""
+    value = str(value or "")
+    if value.startswith(DETAIL_PREFIX):
+        try:
+            data = json.loads(value[len(DETAIL_PREFIX):])
+            if isinstance(data, dict):
+                return {k: str(data.get(k) or "") for k in ("size_table", "care")}
+        except (ValueError, TypeError):
+            pass
+    return {"size_table": "", "care": ""}
 
 
 def upload_detail_files(files, product_id):
@@ -1653,6 +1670,572 @@ def render_detail():
 
 
 # =========================================================
+# PRODUCT POPUP (상품 팝업 · 옵션 · 장바구니 · 찜 · 문의 · 후기)
+# =========================================================
+
+def _shop_features():
+    try:
+        import shop_features
+        return shop_features
+    except Exception as exc:
+        print("[SHOP] features unavailable: " + type(exc).__name__ + ": " + str(exc)[:200], flush=True)
+        return None
+
+
+def detail_href(product_id):
+    params = {}
+    for key in ("page", "cat", "sub", "q", "sort", "brand"):
+        value = get_param(key, "")
+        if value:
+            params[key] = value
+    if params.get("page") in ("detail", "admin"):
+        params = {"page": "home"}
+    params["detail"] = str(product_id)
+    return "?" + urlencode(params)
+
+
+def close_popup_href():
+    params = {}
+    for key in ("page", "cat", "sub", "q", "sort", "brand"):
+        value = get_param(key, "")
+        if value:
+            params[key] = value
+    if params.get("page") == "detail":
+        params = {}
+    return "?" + urlencode(params) if params else "?page=home"
+
+
+def _close_popup():
+    try:
+        for key in ("detail", "id"):
+            if key in st.query_params:
+                del st.query_params[key]
+        if st.query_params.get("page") == "detail":
+            st.query_params["page"] = "home"
+    except Exception:
+        pass
+
+
+def _visitor_id():
+    try:
+        value = str(st.context.cookies.get("twoj_vid", "") or "")
+        if 8 <= len(value) <= 64 and value.isalnum():
+            return value
+    except Exception:
+        pass
+    return ""
+
+
+def _gallery_html(sources, name):
+    gallery_id = "pg-" + uuid.uuid4().hex[:10]
+    total = len(sources)
+    controls, photos, thumbs, rules = [], [], [], []
+    for index, src in enumerate(sources):
+        photo_id = f"{gallery_id}-{index}"
+        esc_src = escape(src, quote=True)
+        checked = " checked" if index == 0 else ""
+        controls.append(
+            f'<input class="pg-choice" type="radio" name="{gallery_id}" id="{photo_id}" '
+            f'aria-label="상품 사진 {index + 1}"{checked}>'
+        )
+        photos.append(
+            f'<div class="pg-slide s-{index}"><img src="{esc_src}" '
+            f'alt="{escape(name, quote=True)} 사진 {index + 1}">'
+            f'<span class="pg-count">{index + 1} / {total}</span></div>'
+        )
+        thumbs.append(
+            f'<label class="pg-thumb t-{index}" for="{photo_id}" title="사진 {index + 1}">'
+            f'<img src="{esc_src}" alt=""></label>'
+        )
+        rules.append(
+            f'#{photo_id}:checked ~ .pg-stage .s-{index}{{display:block;}}'
+            f'#{photo_id}:checked ~ .pg-thumbs .t-{index}{{border-color:#ff7900;}}'
+        )
+    return (
+        "<style>"
+        ".pg{position:relative}.pg-choice{position:absolute;opacity:0;width:1px;height:1px}"
+        ".pg-stage{position:relative;width:100%;aspect-ratio:1;background:#111;border-radius:6px;overflow:hidden}"
+        ".pg-slide{display:none;width:100%;height:100%;position:relative}"
+        ".pg-slide img{width:100%;height:100%;object-fit:contain}"
+        ".pg-count{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.65);color:#fff;"
+        "font-size:12px;padding:3px 9px;border-radius:12px}"
+        ".pg-thumbs{display:flex;gap:6px;overflow-x:auto;padding:8px 2px}"
+        ".pg-thumb{flex:0 0 58px;height:58px;border:2px solid #333;border-radius:4px;overflow:hidden;cursor:pointer}"
+        ".pg-thumb img{width:100%;height:100%;object-fit:cover}"
+        + "".join(rules) + "</style>"
+        + '<div class="pg" role="group" aria-label="상품 사진">' + "".join(controls)
+        + '<div class="pg-stage">' + "".join(photos) + "</div>"
+        + ('<div class="pg-thumbs">' + "".join(thumbs) + "</div>" if total > 1 else "")
+        + "</div>"
+    )
+
+
+def _related_html(product):
+    related = [
+        p for p in PRODUCTS
+        if p.get("id") != product.get("id")
+        and not p.get("demo")
+        and p.get("category") == product.get("category")
+    ][:12]
+    if not related:
+        return ""
+    cards = []
+    for p in related:
+        cards.append(
+            f'<a class="rel-card" href="{escape(detail_href(p.get("id", "")), quote=True)}" target="_self">'
+            f'<img src="{escape(main_image_src(p), quote=True)}" alt="" loading="lazy">'
+            f'<span class="rel-name">{escape(str(p.get("name", "")))}</span>'
+            f'<span class="rel-price">{money(p.get("price", 0))}</span></a>'
+        )
+    return (
+        "<style>.rel h4{margin:18px 0 8px;font-size:15px}"
+        ".rel-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x mandatory}"
+        ".rel-card{flex:0 0 31%;min-width:110px;color:inherit!important;text-decoration:none;scroll-snap-align:start}"
+        ".rel-card img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;background:#1a1a1a}"
+        ".rel-name{display:block;font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+        ".rel-price{display:block;font-size:12px;font-weight:700}</style>"
+        '<div class="rel"><h4>연관 추천 상품</h4><div class="rel-row">' + "".join(cards) + "</div></div>"
+    )
+
+
+def _spec_table_html(rows):
+    body = "".join(
+        f"<tr><th>{escape(str(k))}</th><td>{escape(str(v))}</td></tr>"
+        for k, v in rows if str(v or "").strip()
+    )
+    return (
+        "<style>.pp-spec{width:100%;border-collapse:collapse;font-size:13px}"
+        ".pp-spec th{width:34%;text-align:left;color:#999;font-weight:400;padding:6px 0;vertical-align:top}"
+        ".pp-spec td{padding:6px 0}</style>"
+        f'<table class="pp-spec">{body}</table>'
+    )
+
+
+def _size_table_html(header, rows):
+    head = "".join(f"<th>{escape(c)}</th>" for c in header)
+    body = "".join("<tr>" + "".join(f"<td>{escape(c)}</td>" for c in r) + "</tr>" for r in rows)
+    return (
+        "<style>.pp-size{width:100%;border-collapse:collapse;font-size:13px;text-align:center}"
+        ".pp-size th{background:#1b1b1b;padding:7px 4px;font-weight:700}"
+        ".pp-size td{border-bottom:1px solid #262626;padding:7px 4px}</style>"
+        f'<div style="overflow-x:auto"><table class="pp-size"><thead><tr>{head}</tr></thead>'
+        f"<tbody>{body}</tbody></table></div>"
+    )
+
+
+def _stars(value):
+    value = max(0, min(5, int(round(float(value or 0)))))
+    return "★" * value + "☆" * (5 - value)
+
+
+def _rate_limited(key, limit=5, window=600):
+    now = time.time()
+    stamps = [t for t in st.session_state.get(key, []) if now - t < window]
+    if len(stamps) >= limit:
+        st.session_state[key] = stamps
+        return True
+    stamps.append(now)
+    st.session_state[key] = stamps
+    return False
+
+
+def _render_purchase_box(product, features):
+    pid = str(product.get("id", ""))
+    price = int(product.get("price", 0) or 0)
+    status = str(product.get("condition", ""))
+    payment_on = globals().get("PAYMENT_ENABLED", True)
+    can_buy = payment_on and status == "판매중" and price > 0 and not product.get("demo")
+    if not can_buy:
+        if status and status != "판매중":
+            st.warning(f"현재 {status} 상품입니다.")
+        elif not payment_on:
+            st.info("현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.")
+        return
+
+    options = features.get_options(pid) if features else []
+    is_bike = product.get("type") == "bike"
+    picked = []
+
+    st.markdown("**옵션 선택**" if options else "**수량**")
+    if options:
+        for index, opt in enumerate(options):
+            stock = opt.get("stock")
+            extra = int(opt.get("extra_price") or 0)
+            label = str(opt.get("name"))
+            note = []
+            if extra:
+                note.append(f"+{extra:,}원")
+            if stock is not None:
+                note.append("품절" if int(stock) <= 0 else f"재고 {int(stock)}")
+            c1, c2 = st.columns([3, 2], vertical_alignment="center")
+            c1.markdown(f"{escape(label)}  \n<span style='color:#999;font-size:12px'>{money(price + extra)}"
+                        f"{' · ' + ' · '.join(note) if note else ''}</span>", unsafe_allow_html=True)
+            max_qty = 0 if (stock is not None and int(stock) <= 0) else min(20, int(stock) if stock is not None else 20)
+            qty = c2.number_input(
+                "수량", min_value=0, max_value=max(max_qty, 0), value=0, step=1,
+                key=f"pp_qty_{pid}_{index}", label_visibility="collapsed",
+                disabled=max_qty <= 0,
+            )
+            if qty:
+                picked.append({"o": label, "q": int(qty), "unit": price + extra})
+    else:
+        qty = 1
+        if not is_bike:
+            qty = st.number_input("수량", min_value=1, max_value=20, value=1, step=1,
+                                  key=f"pp_qty_{pid}", label_visibility="collapsed")
+        else:
+            st.caption("중고 바이크는 1대씩 구매할 수 있습니다.")
+        picked.append({"o": "", "q": int(qty), "unit": price})
+
+    total = sum(p["unit"] * p["q"] for p in picked)
+    safe_markdown(
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'border-top:1px solid #333;margin-top:10px;padding-top:12px">'
+        f'<span>총 금액 <span style="color:#999;font-size:12px">(VAT 포함)</span></span>'
+        f'<b style="font-size:22px">{money(total)}</b></div>',
+        unsafe_allow_html=True,
+    )
+    if not picked:
+        st.caption("옵션별 수량을 선택하면 장바구니·구매 버튼이 활성화됩니다.")
+        safe_markdown(
+            '<div class="contact-actions"><span class="contact-btn" style="opacity:.45">장바구니</span>'
+            '<span class="contact-btn primary" style="opacity:.45">구매하기</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    items = json.dumps([{"o": p["o"], "q": p["q"]} for p in picked], ensure_ascii=False)
+    base = {"product": pid, "items": items}
+    cart_url = "/cart/add?" + urlencode(dict(base, next="cart"))
+    buy_url = "/cart/add?" + urlencode(dict(base, next="buy"))
+    label = "테스트 구매하기" if globals().get("PAYMENT_TEST_MODE", True) else "구매하기"
+    safe_markdown(
+        f'<div class="contact-actions">'
+        f'<a class="contact-btn" href="{escape(cart_url, quote=True)}" target="_self">장바구니 담기</a>'
+        f'<a class="contact-btn primary" href="{escape(buy_url, quote=True)}" target="_self">{label}</a>'
+        f'</div><div style="text-align:right;margin-top:6px">'
+        f'<a href="/cart" target="_self" style="font-size:13px">장바구니 보기 →</a></div>',
+        unsafe_allow_html=True,
+    )
+    if globals().get("PAYMENT_TEST_MODE", True):
+        st.caption("현재 TEST 결제 모드 · 실제 금액은 청구되지 않습니다.")
+
+
+def _render_reviews(product, features):
+    pid = str(product.get("id", ""))
+    try:
+        reviews = features.list_reviews(pid)
+    except Exception:
+        st.caption("후기를 불러오지 못했습니다.")
+        return
+    avg, count = features.review_summary(reviews)
+    if count:
+        st.markdown(f"**{_stars(avg)} {avg}** · 후기 {count}개")
+    else:
+        st.caption("아직 작성된 후기가 없습니다.")
+    for review in reviews:
+        option = f" · {review.get('option_name')}" if review.get("option_name") else ""
+        safe_markdown(
+            f'<div style="border-bottom:1px solid #262626;padding:10px 0">'
+            f'<div style="color:#ffb400">{_stars(review.get("rating"))}</div>'
+            f'<div style="color:#999;font-size:12px">{escape(str(review.get("author", "")))}'
+            f'{escape(option)} · {escape(str(review.get("created_at", ""))[:10])}</div>'
+            f'<div style="white-space:pre-wrap;margin-top:4px">{escape(str(review.get("content", "")))}</div></div>',
+            unsafe_allow_html=True,
+        )
+    with st.form(f"pp_review_{pid}", clear_on_submit=True):
+        st.caption("구매하신 분만 작성할 수 있어요. 결제 완료 화면의 주문번호와 주문 시 휴대폰 번호를 입력해 주세요.")
+        c1, c2 = st.columns(2)
+        order_id = c1.text_input("주문번호", placeholder="TJR_...")
+        phone = c2.text_input("휴대폰 번호", placeholder="01012345678")
+        rating = st.select_slider("별점", options=[1, 2, 3, 4, 5], value=5)
+        content = st.text_area("후기 내용", max_chars=1000, height=90)
+        if st.form_submit_button("후기 등록"):
+            if _rate_limited("pp_review_rate"):
+                st.error("잠시 후 다시 시도해 주세요.")
+            else:
+                try:
+                    features.add_review(pid, order_id, phone, rating, content)
+                    st.success("후기가 등록되었습니다.")
+                    st.rerun(scope="fragment")
+                except ValueError as exc:
+                    st.error(str(exc))
+                except Exception:
+                    st.error("후기 저장 중 오류가 발생했습니다.")
+
+
+def _render_qna(product, features):
+    pid = str(product.get("id", ""))
+    try:
+        questions = features.list_qna(pid)
+    except Exception:
+        st.caption("상품 문의를 불러오지 못했습니다.")
+        return
+    if not questions:
+        st.caption("아직 등록된 문의가 없습니다.")
+    for q in questions:
+        state = "답변완료" if q.get("answer") else "답변대기"
+        head = (f"{'🔒 ' if q.get('is_secret') else ''}{state} · {q.get('author', '')} · "
+                f"{str(q.get('created_at', ''))[:10]}")
+        with st.expander(head):
+            if q.get("is_secret"):
+                pw = st.text_input("비밀번호", type="password", key=f"pp_qpw_{q.get('id')}")
+                if st.button("비밀글 보기", key=f"pp_qbtn_{q.get('id')}"):
+                    try:
+                        row = features.read_secret_qna(q.get("id"), pw)
+                        st.text(row.get("question", ""))
+                        if row.get("answer"):
+                            st.info("답변: " + str(row.get("answer")))
+                    except ValueError as exc:
+                        st.error(str(exc))
+            else:
+                st.text(q.get("question", ""))
+                if q.get("answer"):
+                    st.info("답변: " + str(q.get("answer")))
+    with st.form(f"pp_qna_{pid}", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        author = c1.text_input("작성자", max_chars=20)
+        password = c2.text_input("비밀번호 (4자 이상)", type="password", max_chars=30)
+        question = st.text_area("문의 내용", max_chars=1000, height=90)
+        secret = st.checkbox("비밀글로 문의하기")
+        st.caption("연락처 등 개인정보는 비밀글로 남겨 주세요.")
+        if st.form_submit_button("문의 등록"):
+            if _rate_limited("pp_qna_rate"):
+                st.error("잠시 후 다시 시도해 주세요.")
+            else:
+                try:
+                    features.add_qna(pid, author, password, question, secret)
+                    st.success("문의가 등록되었습니다. 답변은 이 화면에서 확인할 수 있어요.")
+                    st.rerun(scope="fragment")
+                except ValueError as exc:
+                    st.error(str(exc))
+                except Exception:
+                    st.error("문의 저장 중 오류가 발생했습니다.")
+
+
+def _product_popup_body(product_id):
+    product = get_product(PRODUCTS, product_id)
+    if not product:
+        st.error("상품을 찾을 수 없습니다.")
+        return
+    features = _shop_features()
+    pid = str(product.get("id", ""))
+    name = str(product.get("name", ""))
+    detail_text, detail_files = unpack_detail(product.get("description", ""))
+    extras = unpack_extras(product.get("description", ""))
+
+    safe_markdown(
+        f'<div style="font-size:12px;color:#999">{escape(str(product.get("category", "")))}'
+        f'{" › " + escape(str(product.get("subcategory", ""))) if product.get("subcategory") else ""}</div>',
+        unsafe_allow_html=True,
+    )
+    left, right = st.columns([1, 1], gap="large")
+
+    with left:
+        sources = [s for s in (image_src(v) for v in product_images(product)) if s]
+        if sources:
+            safe_markdown(_gallery_html(sources, name), unsafe_allow_html=True)
+        else:
+            st.info("등록된 상품 사진이 없습니다.")
+        related = _related_html(product)
+        if related:
+            safe_markdown(related, unsafe_allow_html=True)
+
+    with right:
+        safe_markdown(
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+            '<div style="width:38px;height:38px;border-radius:50%;background:#ff6900;color:#fff;'
+            'display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px">TJR</div>'
+            '<div><div style="font-weight:700">TWO J ROAD</div>'
+            f'<div style="font-size:12px;color:#999">{escape(STORE_NAME)} · 오프라인 매장</div></div></div>'
+            f'<div style="color:#aaa;font-size:13px">{escape(str(product.get("brand", "")))}</div>'
+            f'<div style="font-size:20px;font-weight:800;line-height:1.35">{escape(name)}</div>',
+            unsafe_allow_html=True,
+        )
+        pc, lc = st.columns([3, 1], vertical_alignment="center")
+        pc.markdown(f"<div style='font-size:26px;font-weight:900'>{money(product.get('price', 0))}</div>",
+                    unsafe_allow_html=True)
+        if features:
+            visitor = _visitor_id()
+            liked = features.is_liked(pid, visitor)
+            count = features.like_count(pid)
+            if lc.button(("♥" if liked else "♡") + f" {count}", key=f"pp_like_{pid}",
+                         help="찜하기", use_container_width=True):
+                try:
+                    features.toggle_like(pid, visitor)
+                    st.rerun(scope="fragment")
+                except ValueError as exc:
+                    st.warning(str(exc))
+                except Exception:
+                    st.warning("찜 저장 중 오류가 발생했습니다.")
+
+        if product.get("type") == "bike":
+            specs = [("판매상태", product.get("condition")), ("연식", product.get("year")),
+                     ("주행거리", product.get("mileage")), ("배기량", product.get("cc")),
+                     ("지역", product.get("region")), ("사고유무", product.get("accident"))]
+        else:
+            specs = [("판매상태", product.get("condition")), ("브랜드", product.get("brand")),
+                     ("상품구분", product.get("category")), ("종류", product.get("subcategory")),
+                     ("배송", "택배 · 매장 픽업 문의")]
+        with st.expander("상세정보", expanded=True):
+            safe_markdown(_spec_table_html(specs), unsafe_allow_html=True)
+
+        size_header, size_rows = ([], [])
+        if features and extras.get("size_table"):
+            size_header, size_rows = features.parse_size_table(extras.get("size_table"))
+        if size_header or extras.get("care"):
+            with st.expander("사이즈 및 세탁 주의사항", expanded=True):
+                if size_header:
+                    st.markdown("**사이즈 정보** (단위: cm)")
+                    safe_markdown(_size_table_html(size_header, size_rows), unsafe_allow_html=True)
+                if extras.get("care"):
+                    st.markdown("**세탁 정보**")
+                    st.text(extras.get("care"))
+
+        with st.expander("제품 설명", expanded=True):
+            if detail_text:
+                st.text(detail_text)
+            render_detail_files(detail_files)
+
+        if features:
+            with st.container(border=True):
+                _render_purchase_box(product, features)
+
+        if MASPICK_PHONE or MASPICK_KAKAO_URL:
+            links = ""
+            if MASPICK_PHONE:
+                tel = "".join(c for c in MASPICK_PHONE if c.isdigit() or c == "+")
+                links += f'<a class="contact-btn" href="tel:{escape(tel, quote=True)}">☎ 전화 문의</a>'
+            if MASPICK_KAKAO_URL:
+                links += (f'<a class="contact-btn" href="{escape(MASPICK_KAKAO_URL, quote=True)}" '
+                          'target="_blank" rel="noopener noreferrer">카카오톡 문의</a>')
+            safe_markdown(f'<div class="contact-actions">{links}</div>', unsafe_allow_html=True)
+
+        if features:
+            try:
+                review_count = len(features.list_reviews(pid))
+            except Exception:
+                review_count = 0
+            with st.expander(f"상품 후기 ({review_count})"):
+                _render_reviews(product, features)
+            with st.expander("상품 문의"):
+                _render_qna(product, features)
+
+
+def render_product_popup(product_id):
+    import inspect
+    product = get_product(PRODUCTS, product_id)
+    title = str(product.get("name", "상품 상세"))[:40] if product else "상품 상세"
+    try:
+        params = inspect.signature(st.dialog).parameters
+    except (TypeError, ValueError):
+        params = {}
+    kwargs = {"width": "large"}
+    if "on_dismiss" in params:
+        kwargs["on_dismiss"] = _close_popup
+    dialog = st.dialog(title, **kwargs)(_product_popup_body)
+    dialog(product_id)
+    if "on_dismiss" not in params:
+        safe_markdown(
+            f'<a href="{escape(close_popup_href(), quote=True)}" target="_self">✕ 상품 창 닫기</a>',
+            unsafe_allow_html=True,
+        )
+
+
+OPTION_HELP = (
+    "한 줄에 옵션 하나: 옵션명, 재고, 추가금액\n"
+    "예) 블랙 / M, 3, 0\n    블랙 / XL, , 2000   ← 재고를 비우면 수량 제한 없음\n"
+    "옵션을 하나라도 넣으면 고객은 옵션을 골라야 구매할 수 있습니다."
+)
+SIZE_HELP = (
+    "첫 줄은 제목, 칸은 쉼표로 구분 (단위 cm)\n"
+    "예) 사이즈, 총장, 허리, 엉덩이\n    M, 100, 30, 52\n    L, 102, 32, 54"
+)
+
+
+def render_product_extras_inputs(key_prefix, options_text="", size_text="", care_text=""):
+    with st.expander("옵션 · 사이즈표 · 세탁정보", expanded=bool(options_text or size_text or care_text)):
+        options_value = st.text_area("옵션 (옵션명, 재고, 추가금액)", value=options_text, height=120,
+                                     help=OPTION_HELP, key=f"{key_prefix}_options",
+                                     placeholder="블랙 / M, 3, 0")
+        size_value = st.text_area("사이즈표", value=size_text, height=110, help=SIZE_HELP,
+                                  key=f"{key_prefix}_size", placeholder="사이즈, 총장, 허리\nM, 100, 30")
+        care_value = st.text_area("세탁 정보", value=care_text, height=80,
+                                  key=f"{key_prefix}_care", placeholder="손세탁 권장 / 표백제 사용 금지")
+    return options_value, size_value, care_value
+
+
+def validate_product_options(options_text):
+    features = _shop_features()
+    if features is None:
+        if str(options_text or "").strip():
+            raise ValueError("옵션 기능을 불러오지 못해 옵션을 저장할 수 없습니다.")
+        return None, None
+    return features, features.parse_options_text(options_text)
+
+
+def render_feedback_admin():
+    st.subheader("상품 문의 · 후기 관리")
+    features = _shop_features()
+    if features is None:
+        st.error("문의·후기 기능을 불러오지 못했습니다.")
+        return
+    names = {str(p.get("id")): str(p.get("name", "")) for p in PRODUCTS}
+    qna_tab, review_tab = st.tabs(["상품 문의", "상품 후기"])
+
+    with qna_tab:
+        try:
+            questions = features.admin_list_qna()
+        except Exception:
+            st.error("상품 문의를 불러오지 못했습니다.")
+            questions = []
+        waiting = [q for q in questions if not q.get("answer") and not q.get("hidden")]
+        st.caption(f"전체 {len(questions)}건 · 답변 대기 {len(waiting)}건")
+        only_waiting = st.checkbox("답변 대기만 보기", value=True, key="fb_only_waiting")
+        for q in (waiting if only_waiting else questions):
+            qid = q.get("id")
+            title = (f"{'[숨김] ' if q.get('hidden') else ''}{'🔒 ' if q.get('is_secret') else ''}"
+                     f"{names.get(str(q.get('product_id')), q.get('product_id'))} · {q.get('author')} · "
+                     f"{str(q.get('created_at', ''))[:16].replace('T', ' ')}")
+            with st.expander(title):
+                st.text(q.get("question", ""))
+                answer = st.text_area("답변", value=str(q.get("answer") or ""), key=f"fb_answer_{qid}")
+                c1, c2 = st.columns(2)
+                if c1.button("답변 저장", key=f"fb_save_{qid}", use_container_width=True):
+                    try:
+                        features.admin_answer_qna(qid, answer)
+                        st.success("답변을 저장했습니다.")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    except Exception:
+                        st.error("답변 저장에 실패했습니다.")
+                hide_label = "다시 보이기" if q.get("hidden") else "숨기기"
+                if c2.button(hide_label, key=f"fb_hide_q_{qid}", use_container_width=True):
+                    features.admin_set_qna_hidden(qid, not q.get("hidden"))
+                    st.rerun()
+
+    with review_tab:
+        try:
+            reviews = features.admin_list_reviews()
+        except Exception:
+            st.error("상품 후기를 불러오지 못했습니다.")
+            reviews = []
+        st.caption(f"전체 {len(reviews)}건")
+        for r in reviews:
+            rid = r.get("id")
+            title = (f"{'[숨김] ' if r.get('hidden') else ''}{'★' * int(r.get('rating') or 0)} · "
+                     f"{names.get(str(r.get('product_id')), r.get('product_id'))} · {r.get('author')}")
+            with st.expander(title):
+                st.caption(f"주문번호 {r.get('order_id')} · {r.get('option_name') or '옵션 없음'} · "
+                           f"{str(r.get('created_at', ''))[:10]}")
+                st.text(r.get("content", ""))
+                hide_label = "다시 보이기" if r.get("hidden") else "숨기기"
+                if st.button(hide_label, key=f"fb_hide_r_{rid}"):
+                    features.admin_set_review_hidden(rid, not r.get("hidden"))
+                    st.rerun()
+
+
+# =========================================================
 # ADMIN LOGIN
 # =========================================================
 
@@ -1867,10 +2450,20 @@ def render_add_product():
                 key="add_cc"
             )
 
+    add_options_text, add_size_text, add_care_text = "", "", ""
+    if product_type != "중고 바이크":
+        add_options_text, add_size_text, add_care_text = render_product_extras_inputs("add_extras")
+
     if st.button(
         "상품 등록하기",
         use_container_width=True
     ):
+        try:
+            add_features, add_option_rows = validate_product_options(add_options_text)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+
         if not name.strip():
             st.error(
                 "상품명을 입력해 주세요."
@@ -1937,7 +2530,11 @@ def render_add_product():
                 else ""
             ),
             "images": saved_images,
-            "description": pack_detail(description.strip(), saved_detail_files),
+            "description": pack_detail(
+                description.strip(),
+                saved_detail_files,
+                {"size_table": add_size_text.strip(), "care": add_care_text.strip()},
+            ),
             "demo": False,
         }
 
@@ -1958,8 +2555,15 @@ def render_add_product():
             PRODUCTS
         )
 
+        option_notice = ""
+        if add_features is not None and add_option_rows:
+            try:
+                add_features.save_options(product_id, add_option_rows)
+            except Exception:
+                option_notice = " (옵션 저장 실패 · 상품 수정에서 다시 저장해 주세요)"
+
         st.session_state["product_action_notice"] = (
-            f"상품 등록 완료 · {new_product['name']}"
+            f"상품 등록 완료 · {new_product['name']}" + option_notice
         )
 
         st.rerun()
@@ -2185,6 +2789,27 @@ def render_manage_products():
         key=f"edit_detail_files_{selected_id}"
     )
 
+    current_extras = unpack_extras(product.get("description", ""))
+    options_loaded = False
+    edit_options_text, edit_size_text, edit_care_text = "", "", ""
+    if product.get("type") != "bike":
+        _edit_features = _shop_features()
+        current_options_text = ""
+        if _edit_features is not None:
+            try:
+                current_options_text = _edit_features.options_to_text(
+                    _edit_features._backend.product_options(str(selected_id))
+                )
+                options_loaded = True
+            except Exception:
+                st.warning("현재 옵션을 불러오지 못했습니다. 이번 저장에서는 옵션을 변경하지 않습니다.")
+        edit_options_text, edit_size_text, edit_care_text = render_product_extras_inputs(
+            f"edit_extras_{selected_id}",
+            current_options_text,
+            current_extras.get("size_table", ""),
+            current_extras.get("care", ""),
+        )
+
     bike_values = {}
 
     if product.get("type") == "bike":
@@ -2244,6 +2869,12 @@ def render_manage_products():
             "수정 저장",
             use_container_width=True
         ):
+            try:
+                edit_features, edit_option_rows = validate_product_options(edit_options_text)
+            except ValueError as exc:
+                st.error(str(exc))
+                return
+
             product["brand"] = edit_brand.strip()
             product["name"] = edit_name.strip()
             product["price"] = int(edit_price)
@@ -2301,7 +2932,11 @@ def render_manage_products():
                     return
             if replacement_detail_files or remove_detail_files:
                 delete_local_images({"images": [item["url"] for item in current_detail_files]})
-            product["description"] = pack_detail(edit_description.strip(), detail_files)
+            product["description"] = pack_detail(
+                edit_description.strip(),
+                detail_files,
+                {"size_table": edit_size_text.strip(), "care": edit_care_text.strip()},
+            )
 
             for key, value in bike_values.items():
                 product[key] = value.strip()
@@ -2312,8 +2947,15 @@ def render_manage_products():
                 PRODUCTS
             )
 
+            option_notice = ""
+            if edit_features is not None and options_loaded and product.get("type") != "bike":
+                try:
+                    edit_features.save_options(str(selected_id), edit_option_rows)
+                except Exception:
+                    option_notice = " (옵션 저장 실패 · 다시 시도해 주세요)"
+
             st.session_state["product_action_notice"] = (
-                f"상품 수정 완료 · {product.get('name', '')}"
+                f"상품 수정 완료 · {product.get('name', '')}" + option_notice
             )
 
             st.rerun()
@@ -2539,7 +3181,7 @@ if page == "shop":
     render_shop()
 
 elif page == "detail":
-    render_detail()
+    render_home()
 
 elif page == "admin":
     render_admin()
@@ -2549,6 +3191,10 @@ elif page == "store":
 
 else:
     render_home()
+
+_popup_product_id = get_param("detail", "") or (get_param("id", "") if page == "detail" else "")
+if _popup_product_id and page != "admin":
+    render_product_popup(_popup_product_id)
 
 
 # =========================================================
