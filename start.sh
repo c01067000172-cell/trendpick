@@ -3,19 +3,24 @@ set -e
 
 mkdir -p static
 
-# Install Naver ownership verification and crawler-visible SEO metadata
-# before Streamlit's browser code runs.
+# Install Naver ownership verification, crawler-visible SEO metadata,
+# and crawler-visible homepage text before Streamlit's browser code runs.
+# (홈 SEO는 이 파일 한 곳에서만 관리합니다. sitecustomize.py에는 SEO 코드가 없습니다.)
 python - <<'NAVER_VERIFY'
-from pathlib import Path
-from html import escape
 import json
+import os
 import re
+from html import escape
+from pathlib import Path
+from urllib.parse import quote
+
 import streamlit
 
 SITE = "https://www.maspick.co.kr"
 BRAND_KO = "투제이로드"
 BRAND_EN = "TWO J ROAD"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
+PHONE = os.getenv("MASPICK_PHONE", "").strip()
 
 index = Path(streamlit.__file__).resolve().parent / "static" / "index.html"
 html = index.read_text(encoding="utf-8")
@@ -27,23 +32,20 @@ patterns = [
     r'<meta\b(?=[^>]*\bname=["\']naver-site-verification["\'])[^>]*>',
     r'<meta\b(?=[^>]*\bname=["\']description["\'])[^>]*>',
     r'<meta\b(?=[^>]*\bname=["\']robots["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:title["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:description["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:type["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:site_name["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:url["\'])[^>]*>',
-    r'<meta\b(?=[^>]*\bproperty=["\']og:locale["\'])[^>]*>',
+    r'<meta\b(?=[^>]*\bproperty=["\']og:[a-z_]+["\'])[^>]*>',
     r'<link\b(?=[^>]*\brel=["\']canonical["\'])[^>]*>',
     r'<script[^>]*id=["\']twojroad-schema["\'][^>]*>.*?</script>',
+    r'<script[^>]*id=["\']twoj-jsonld["\'][^>]*>.*?</script>',
+    r'<!--TWOJ-SEO-BODY-START-->.*?<!--TWOJ-SEO-BODY-END-->',
 ]
 for pattern in patterns:
     html = re.sub(pattern, "", html, flags=re.I | re.S)
 html = re.sub(r"<title\b[^>]*>.*?</title>", "", html, flags=re.I | re.S)
 
-page_title = "투제이로드 (TWO J ROAD) | 포천 중고 바이크·바이크 의류·용품"
+page_title = "투제이로드 (TWO J ROAD) | 포천 중고 바이크·오토바이 의류·헬멧"
 page_description = (
-    "투제이로드(TWO J ROAD)는 포천 중고 바이크와 중고 오토바이, "
-    "바이크 의류, 오토바이 자켓·장갑·헬멧 등 라이딩 용품을 판매하는 바이크 전문점입니다."
+    "투제이로드(TWO J ROAD)는 경기 포천의 바이크 매장입니다. 중고 바이크와 중고 오토바이, "
+    "바이크 자켓·오토바이 장갑·오토바이 헬멧 등 바이크 의류와 라이딩 용품을 판매합니다."
 )
 
 schema = {
@@ -53,6 +55,7 @@ schema = {
     "name": BRAND_EN,
     "alternateName": [BRAND_KO, "포천 투제이로드", "TWOJROAD", "TWO J ROAD 포천"],
     "url": SITE + "/",
+    "image": SITE + "/app/static/jinbike_banner.webp",
     "description": page_description,
     "address": {
         "@type": "PostalAddress",
@@ -63,11 +66,13 @@ schema = {
     },
     "areaServed": "대한민국",
     "keywords": [
-        "투제이로드", "TWO J ROAD", "포천 투제이로드", "중고 바이크",
+        "투제이로드", "TWO J ROAD", "포천 투제이로드", "포천 중고 바이크",
         "중고 오토바이", "바이크 의류", "오토바이 자켓", "바이크 장갑",
         "오토바이 헬멧", "라이딩 용품"
     ],
 }
+if PHONE:
+    schema["telephone"] = PHONE
 
 verification = '<meta name="naver-site-verification" content="9f3ca97a7b93c85fbea2d89bd64466f9e891c066" />\n'
 metadata = (
@@ -81,13 +86,57 @@ metadata = (
     + '<meta property="og:site_name" content="TWO J ROAD (투제이로드)" />\n'
     + '<meta property="og:url" content="' + SITE + '/" />\n'
     + '<meta property="og:locale" content="ko_KR" />\n'
+    + '<meta property="og:image" content="' + SITE + '/app/static/jinbike_banner.webp" />\n'
     + '<script id="twojroad-schema" type="application/ld+json">'
-    + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+    + json.dumps(schema, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     + '</script>\n'
 )
 html = html.replace("</head>", verification + metadata + "</head>", 1)
+
+# Homepage text inside #root. Search robots read it from the original HTML.
+# In the browser, Streamlit replaces #root content when the app starts,
+# so the storefront screen stays the same.
+map_url = "https://map.naver.com/p/search/" + quote(STORE_ADDRESS, safe="")
+phone_line = ("<br>매장 문의: " + escape(PHONE)) if PHONE else ""
+body_text = (
+    "<!--TWOJ-SEO-BODY-START-->"
+    '<main style="max-width:1100px;margin:0 auto;padding:24px;color:#eee;'
+    'background:#080808;font:16px/1.7 sans-serif">'
+    "<h1>투제이로드 (TWO J ROAD) · 포천 중고 바이크 · 바이크 의류 · 오토바이 헬멧</h1>"
+    "<p>투제이로드(TWO J ROAD)는 경기 포천에 있는 바이크 매장입니다. "
+    "중고 바이크와 중고 오토바이 매물, 바이크 자켓·오토바이 장갑·바이크 바지·바이크 신발 같은 "
+    "바이크 의류, 오토바이 헬멧과 라이딩 용품을 판매합니다.</p>"
+    '<nav aria-label="상품 분류"><ul>'
+    '<li><a href="/catalog/bike">포천 중고 바이크 · 중고 오토바이</a></li>'
+    '<li><a href="/catalog/wear">바이크 의류</a> : '
+    '<a href="/catalog/wear/jacket">바이크 자켓</a>, '
+    '<a href="/catalog/wear/gloves">오토바이 장갑</a>, '
+    '<a href="/catalog/wear/pants">바이크 바지</a>, '
+    '<a href="/catalog/wear/shoes">바이크 신발</a>, '
+    '<a href="/catalog/wear/tops">바이크 상의</a></li>'
+    '<li><a href="/catalog/gear">바이크 용품</a> : '
+    '<a href="/catalog/gear/helmet">오토바이 헬멧</a></li>'
+    "</ul></nav>"
+    "<h2>매장 안내</h2>"
+    "<p>포천 투제이로드 (TWO J ROAD)<br>" + escape(STORE_ADDRESS) + phone_line + "<br>"
+    '<a href="' + escape(map_url, quote=True) + '">네이버 지도에서 위치 보기</a> · '
+    '<a href="/?page=store">오프라인매장 안내</a> · '
+    '<a href="/sitemap.xml">사이트맵</a></p>'
+    "</main>"
+    "<!--TWOJ-SEO-BODY-END-->"
+)
+html, count = re.subn(
+    r'(<div\b[^>]*\bid=["\']root["\'][^>]*>)',
+    lambda m: m.group(1) + body_text,
+    html,
+    count=1,
+    flags=re.I,
+)
+if count != 1:
+    print("WARNING: Streamlit #root not found - homepage body text was not installed")
+
 index.write_text(html, encoding="utf-8")
-print("TWO J ROAD Korean brand SEO metadata installed")
+print("TWO J ROAD Korean brand SEO metadata installed (body text: %s)" % ("ok" if count == 1 else "skipped"))
 NAVER_VERIFY
 
 # Build a smaller browser-friendly banner once at service start.
@@ -108,7 +157,7 @@ if src.exists():
         image.save(dst, "WEBP", quality=82, method=6)
 PY
 
-# Fallback crawler files. seo_server.py also exposes /robots.txt and /sitemap.xml.
+# Fallback crawler files. seo_server.py serves the live /robots.txt and /sitemap.xml.
 printf '%s\n' \
   'User-agent: *' \
   'Allow: /' \
@@ -118,10 +167,10 @@ printf '%s\n' \
 printf '%s\n' \
   '<?xml version="1.0" encoding="UTF-8"?>' \
   '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' \
-  '  <url><loc>https://www.maspick.co.kr/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>' \
-  '  <url><loc>https://www.maspick.co.kr/catalog/bike</loc><changefreq>daily</changefreq><priority>0.9</priority></url>' \
-  '  <url><loc>https://www.maspick.co.kr/catalog/wear</loc><changefreq>daily</changefreq><priority>0.9</priority></url>' \
-  '  <url><loc>https://www.maspick.co.kr/catalog/gear</loc><changefreq>daily</changefreq><priority>0.9</priority></url>' \
+  '  <url><loc>https://www.maspick.co.kr/</loc></url>' \
+  '  <url><loc>https://www.maspick.co.kr/catalog/bike</loc></url>' \
+  '  <url><loc>https://www.maspick.co.kr/catalog/wear</loc></url>' \
+  '  <url><loc>https://www.maspick.co.kr/catalog/gear</loc></url>' \
   '</urlset>' > static/sitemap.xml
 
 exec python seo_server.py run supabase_runner.py \
