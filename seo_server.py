@@ -17,6 +17,90 @@ STORE_NAME = "TWO J ROAD"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 CATEGORIES = {"bike": "중고 바이크", "wear": "바이크 의류", "gear": "바이크 용품"}
 
+BRAND = "투제이로드 TWO J ROAD"
+PHONE = os.getenv("MASPICK_PHONE", "").strip()
+LABEL_TO_KIND = {label: kind for kind, label in CATEGORIES.items()}
+
+CATEGORY_INFO = {
+    "bike": {
+        "heading": "포천 중고 바이크 · 중고 오토바이",
+        "title": "포천 중고 바이크·중고 오토바이 매물 | " + BRAND,
+        "summary": "경기 포천 투제이로드(TWO J ROAD)의 중고 바이크·중고 오토바이 매물과 가격, 판매 상태를 확인하세요.",
+        "intro": (
+            "경기 포천 투제이로드(TWO J ROAD)에 등록된 중고 바이크 매물입니다. "
+            "매물별 사진과 가격, 판매 상태를 확인한 뒤 매장 방문이나 문의에 참고하세요."
+        ),
+    },
+    "wear": {
+        "heading": "바이크 의류 · 라이딩 자켓·장갑·바지·신발",
+        "title": "바이크 의류·오토바이 자켓·장갑 | " + BRAND,
+        "summary": "투제이로드(TWO J ROAD)의 바이크 의류. 오토바이 자켓, 바이크 장갑, 라이딩 바지, 바이크 신발을 확인하세요.",
+        "intro": (
+            "투제이로드(TWO J ROAD)에서 판매하는 바이크 의류입니다. "
+            "라이딩 자켓, 오토바이 장갑, 바이크 바지와 신발을 종류별로 나눠 두었습니다."
+        ),
+    },
+    "gear": {
+        "heading": "바이크 용품 · 오토바이 헬멧·라이딩 기어",
+        "title": "바이크 용품·오토바이 헬멧 | " + BRAND,
+        "summary": "투제이로드(TWO J ROAD)의 바이크 용품. 오토바이 헬멧과 라이딩 용품의 가격을 확인하세요.",
+        "intro": (
+            "투제이로드(TWO J ROAD)에서 판매하는 바이크 용품입니다. "
+            "오토바이 헬멧과 라이딩에 필요한 용품을 확인하세요."
+        ),
+    },
+}
+
+# slug -> 상품 subcategory 값과 검색용 문구. subcategory 값은 app.py 등록 화면의 선택지와 같아야 합니다.
+SUBCATEGORIES = {
+    "wear": {
+        "jacket": {
+            "label": "자켓",
+            "heading": "바이크 자켓 · 오토바이 자켓",
+            "title": "바이크 자켓·오토바이 자켓·라이딩 자켓 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 바이크 자켓, 오토바이 자켓, 라이딩 자켓 상품과 가격을 확인하세요.",
+            "intro": "라이딩할 때 입는 바이크 자켓(오토바이 자켓, 라이딩 자켓) 상품입니다.",
+        },
+        "gloves": {
+            "label": "장갑",
+            "heading": "오토바이 장갑 · 바이크 장갑",
+            "title": "오토바이 장갑·바이크 장갑 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 오토바이 장갑, 바이크 장갑 상품과 가격을 확인하세요.",
+            "intro": "라이딩용 오토바이 장갑(바이크 장갑) 상품입니다.",
+        },
+        "pants": {
+            "label": "하의",
+            "heading": "바이크 바지 · 라이딩 팬츠",
+            "title": "바이크 바지·라이딩 팬츠 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 바이크 바지, 라이딩 팬츠 상품과 가격을 확인하세요.",
+            "intro": "라이딩용 바이크 바지(라이딩 팬츠) 상품입니다.",
+        },
+        "shoes": {
+            "label": "신발",
+            "heading": "바이크 신발 · 바이크 부츠",
+            "title": "바이크 신발·바이크 부츠 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 바이크 신발, 바이크 부츠 상품과 가격을 확인하세요.",
+            "intro": "라이딩용 바이크 신발과 바이크 부츠 상품입니다.",
+        },
+        "tops": {
+            "label": "상의",
+            "heading": "바이크 상의 · 라이딩 의류",
+            "title": "바이크 상의·라이딩 의류 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 바이크 상의와 라이딩 의류를 확인하세요.",
+            "intro": "라이딩할 때 입는 바이크 상의 상품입니다.",
+        },
+    },
+    "gear": {
+        "helmet": {
+            "label": "헬멧",
+            "heading": "오토바이 헬멧 · 바이크 헬멧",
+            "title": "오토바이 헬멧·바이크 헬멧 | " + BRAND,
+            "summary": "투제이로드(TWO J ROAD)의 오토바이 헬멧, 바이크 헬멧 상품과 가격을 확인하세요.",
+            "intro": "오토바이 헬멧(바이크 헬멧) 상품입니다.",
+        },
+    },
+}
+
 # Official Toss Payments documentation test keys. They cannot charge real money.
 # When both merchant keys are added as Render env vars, those values take priority.
 DOCS_TEST_CLIENT_KEY = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm"
@@ -64,7 +148,7 @@ def products():
             client.table("products")
             .select(
                 "id,type,category,subcategory,brand,name,price,condition,"
-                "image,images,description,demo"
+                "image,images,description,demo,year,mileage,cc,region,accident,updated_at"
             )
             .order("id")
             .range(offset, offset + 999)
@@ -90,7 +174,7 @@ def product_by_id(product_id):
         .table("products")
         .select(
             "id,type,category,subcategory,brand,name,price,condition,"
-            "image,images,description,demo"
+            "image,images,description,demo,year,mileage,cc,region,accident,updated_at"
         )
         .eq("id", product_id)
         .limit(1)
@@ -125,40 +209,147 @@ def image(url, alt):
     )
 
 
-def page(title, summary, path, body):
+def product_kind(p):
+    return LABEL_TO_KIND.get(str(p.get("category") or "").strip()) or str(p.get("type") or "")
+
+
+def product_sub_slug(p):
+    label = str(p.get("subcategory") or "").strip()
+    for slug, info in SUBCATEGORIES.get(product_kind(p), {}).items():
+        if info["label"] == label:
+            return slug
+    return None
+
+
+def display_name(p):
+    """브랜드 + 상품명. 상품명이 이미 브랜드로 시작하면 브랜드를 다시 붙이지 않습니다."""
+    brand = str(p.get("brand") or "").strip()
+    name = str(p.get("name") or "상품").strip()
+    if not brand or name.lower().startswith(brand.lower()):
+        return name
+    return brand + " " + name
+
+
+def first_image(p):
+    pics = p.get("images") or [p.get("image")]
+    if not isinstance(pics, list):
+        pics = [pics]
+    return next(
+        (u for u in pics if isinstance(u, str) and u.startswith(("https://", "http://"))),
+        "",
+    )
+
+
+def product_url(p):
+    return "/products/" + quote(str(p["id"]), safe="")
+
+
+def _jsonld(data):
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return '<script type="application/ld+json">' + text.replace("</", "<\\/") + "</script>"
+
+
+def _breadcrumb(crumbs):
+    html = '<nav class="crumbs" aria-label="현재 위치">'
+    html += " › ".join(
+        f'<a href="{esc(path, quote=True)}">{esc(name)}</a>' for name, path in crumbs
+    )
+    html += "</nav>"
+    data = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i, "name": name, "item": SITE + path}
+            for i, (name, path) in enumerate(crumbs, 1)
+        ],
+    }
+    return html, data
+
+
+def page(title, summary, path, body, image_url="", schemas=None, crumbs=None):
     url = esc(SITE + path, quote=True)
+    schemas = list(schemas or [])
+    crumb_html = ""
+    if crumbs:
+        crumb_html, crumb_data = _breadcrumb(crumbs)
+        schemas.append(crumb_data)
+    og_image = image_url or (SITE + "/app/static/jinbike_banner.webp")
+    sub_links = " · ".join(
+        f'<a href="/catalog/{kind}/{slug}">{esc(info["label"])}</a>'
+        for kind, subs in SUBCATEGORIES.items()
+        for slug, info in subs.items()
+    )
+    phone_html = f" · 문의 {esc(PHONE)}" if PHONE else ""
+    map_url = "https://map.naver.com/p/search/" + quote(STORE_ADDRESS, safe="")
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="{esc(summary, quote=True)}">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="{url}"><meta property="og:title" content="{esc(title, quote=True)}">
 <meta property="og:description" content="{esc(summary, quote=True)}"><meta property="og:url" content="{url}">
-<meta property="og:type" content="website"><style>
+<meta property="og:type" content="website"><meta property="og:site_name" content="TWO J ROAD (투제이로드)">
+<meta property="og:locale" content="ko_KR"><meta property="og:image" content="{esc(og_image, quote=True)}">
+{"".join(_jsonld(item) for item in schemas)}
+<style>
 body{{background:#080808;color:#eee;font:16px/1.7 sans-serif;max-width:1100px;margin:auto;padding:24px}}
-a{{color:#ff8a24}}nav{{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:24px}}
+a{{color:#ff8a24}}nav.main{{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px;font-weight:700}}
+nav.sub{{font-size:14px;margin-bottom:18px}}.crumbs{{font-size:13px;color:#aaa;margin-bottom:8px}}
 img{{display:block;max-width:100%;max-height:700px;object-fit:contain;margin:12px 0}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:20px}}
 .card{{border:1px solid #333;padding:16px}}.card img{{width:100%;height:220px}}
-.text{{white-space:pre-wrap}}h1{{font-size:28px}}
+.card h2{{font-size:17px;margin:8px 0}}.state{{color:#ffb36b;font-size:14px}}
+.chips a{{display:inline-block;border:1px solid #444;padding:4px 12px;margin:0 8px 8px 0;border-radius:16px}}
+.text{{white-space:pre-wrap}}h1{{font-size:28px;margin:8px 0}}.intro{{color:#ccc}}
 .buy{{display:inline-block;background:#ff6900;color:#fff;padding:12px 20px;font-weight:800;border-radius:4px}}
 .notice{{border:1px solid #4a3420;background:#1b120b;padding:12px 14px;margin:18px 0}}
+footer{{margin-top:40px;border-top:1px solid #333;padding-top:16px;font-size:14px;color:#aaa}}
 </style></head><body>
-<nav><a href="/">TWO J ROAD</a><a href="/catalog/bike">중고 바이크</a><a href="/catalog/wear">바이크 의류</a><a href="/catalog/gear">바이크 용품</a></nav>
-{body}<footer><p>포천 TWO J ROAD · {esc(STORE_ADDRESS)}</p></footer></body></html>'''
+<nav class="main"><a href="/">투제이로드 TWO J ROAD</a><a href="/catalog/bike">중고 바이크</a><a href="/catalog/wear">바이크 의류</a><a href="/catalog/gear">바이크 용품</a><a href="/?page=store">오프라인매장</a></nav>
+<nav class="sub">{sub_links}</nav>
+{crumb_html}
+{body}
+<footer><p>포천 투제이로드(TWO J ROAD) · {esc(STORE_ADDRESS)}{phone_html}<br>
+중고 오토바이 · 바이크 의류 · 오토바이 헬멧 · 라이딩 용품<br>
+<a href="{esc(map_url, quote=True)}" rel="noopener">네이버 지도에서 위치 보기</a> · <a href="/sitemap.xml">사이트맵</a></p></footer>
+</body></html>'''
 
 
 def product_page(p):
     name = str(p.get("name") or "상품")
+    brand = str(p.get("brand") or "")
+    state = str(p.get("condition") or "")
+    price = int(p.get("price") or 0)
+    kind = product_kind(p)
+    sub = product_sub_slug(p)
     text, files = description(p)
-    summary = " ".join(
-        (str(p.get("brand") or ""), name, str(p.get("condition") or ""), text)
-    ).strip()
-    summary = " ".join(summary.split())[:150] or name
+    full_name = display_name(p)
+    summary = " ".join(" ".join((full_name, state, text)).split())[:150] or name
     pics = p.get("images") or [p.get("image")]
-    body = f'<h1>{esc(name)}</h1><p>{esc(str(p.get("brand") or ""))}</p>'
-    body += f'<p>{int(p.get("price") or 0):,}원 · {esc(str(p.get("condition") or ""))}</p>'
-    body += "".join(image(url, name) for url in pics)
+    if not isinstance(pics, list):
+        pics = [pics]
+
+    body = f'<h1>{esc(full_name)}</h1>'
+    if brand:
+        body += f'<p>브랜드: {esc(brand)}</p>'
+    body += f'<p>{price:,}원' + (f' · {esc(state)}' if state else "") + '</p>'
+    if kind == "bike":
+        specs = [
+            (label, str(p.get(key) or "").strip())
+            for label, key in (
+                ("연식", "year"), ("주행거리", "mileage"), ("배기량", "cc"),
+                ("지역", "region"), ("사고 여부", "accident"),
+            )
+        ]
+        specs = [(label, value) for label, value in specs if value]
+        if specs:
+            body += "<ul>" + "".join(
+                f"<li>{esc(label)}: {esc(value)}</li>" for label, value in specs
+            ) + "</ul>"
+    body += "".join(image(url, full_name) for url in pics)
     body += f'<div class="text">{esc(text)}</div>'
     for item in files:
+        if not isinstance(item, dict):
+            continue
         url = item.get("url", "")
         if item.get("kind") == "image":
             body += image(url, item.get("name", name))
@@ -169,7 +360,7 @@ def product_page(p):
             )
     detail = "/?" + urlencode({"page": "detail", "id": p["id"]})
     body += f'<p><a href="{esc(detail, quote=True)}">상품 상세 보기</a></p>'
-    if str(p.get("condition") or "") == "판매중" and int(p.get("price") or 0) > 0:
+    if state == "판매중" and price > 0:
         label = "테스트 결제" if TOSS_TEST_MODE else "구매하기"
         body += (
             f'<p><a class="buy" href="/checkout/{quote(str(p["id"]), safe="")}">'
@@ -177,43 +368,154 @@ def product_page(p):
         )
         if TOSS_TEST_MODE:
             body += '<div class="notice">현재 테스트 결제 모드이며 실제 금액은 청구되지 않습니다.</div>'
+
+    crumbs = [("투제이로드 홈", "/")]
+    section = ""
+    if kind in CATEGORIES:
+        crumbs.append((CATEGORIES[kind], "/catalog/" + kind))
+        section = CATEGORIES[kind]
+        if sub:
+            info = SUBCATEGORIES[kind][sub]
+            crumbs.append((info["label"], f"/catalog/{kind}/{sub}"))
+            section = info["heading"].split(" · ")[0]
+    crumbs.append((name, product_url(p)))
+
+    hero = first_image(p)
+    product_data = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": full_name,
+        "url": SITE + product_url(p),
+        "description": summary,
+    }
+    image_list = [u for u in pics if isinstance(u, str) and u.startswith(("http://", "https://"))]
+    if image_list:
+        product_data["image"] = image_list[:10]
+    if brand:
+        product_data["brand"] = {"@type": "Brand", "name": brand}
+    if price > 0:
+        offer = {
+            "@type": "Offer",
+            "price": price,
+            "priceCurrency": "KRW",
+            "url": SITE + product_url(p),
+            "seller": {"@type": "Organization", "name": "TWO J ROAD"},
+        }
+        if kind == "bike":
+            offer["itemCondition"] = "https://schema.org/UsedCondition"
+        if state == "판매중":
+            offer["availability"] = "https://schema.org/InStock"
+        elif state in ("판매완료", "품절"):
+            offer["availability"] = "https://schema.org/SoldOut"
+        product_data["offers"] = offer
+
+    title_parts = [full_name]
+    if section:
+        title_parts.append(section)
+    title_parts.append(BRAND)
     return page(
-        name + " | TWO J ROAD",
+        " | ".join(title_parts),
         summary,
-        "/products/" + quote(str(p["id"]), safe=""),
+        product_url(p),
         body,
+        image_url=hero,
+        schemas=[product_data],
+        crumbs=crumbs,
     )
 
 
-def catalog_page(kind, rows):
-    label = CATEGORIES[kind]
-    filtered = [p for p in rows if p.get("type") == kind]
-    body = f'<h1>{label}</h1><div class="grid">'
-    for p in filtered:
-        name = str(p.get("name") or "상품")
-        url = "/products/" + quote(str(p["id"]), safe="")
-        body += (
-            f'<article class="card"><a href="{url}">{image(p.get("image"), name)}'
-            f'<h2>{esc(name)}</h2></a><p>{int(p.get("price") or 0):,}원</p></article>'
+def _card(p):
+    name = display_name(p)
+    state = str(p.get("condition") or "")
+    return (
+        f'<article class="card"><a href="{product_url(p)}">{image(first_image(p), name)}'
+        f'<h2>{esc(name)}</h2></a><p>{int(p.get("price") or 0):,}원'
+        + (f' <span class="state">{esc(state)}</span>' if state else "")
+        + '</p></article>'
+    )
+
+
+def catalog_page(kind, rows, sub=None):
+    info = CATEGORY_INFO[kind]
+    in_kind = [p for p in rows if product_kind(p) == kind]
+    path = "/catalog/" + kind
+    crumbs = [("투제이로드 홈", "/"), (CATEGORIES[kind], path)]
+    if sub:
+        sub_info = SUBCATEGORIES[kind][sub]
+        filtered = [
+            p for p in in_kind
+            if str(p.get("subcategory") or "").strip() == sub_info["label"]
+        ]
+        path += "/" + sub
+        crumbs.append((sub_info["label"], path))
+        heading, title, summary, intro = (
+            sub_info["heading"], sub_info["title"], sub_info["summary"], sub_info["intro"]
         )
-    body += "</div>" if filtered else "</div><p>등록된 상품이 없습니다.</p>"
-    return page(
-        label + " | TWO J ROAD",
-        "TWO J ROAD의 " + label + " 상품과 가격을 확인하세요.",
-        "/catalog/" + kind,
-        body,
-    )
+    else:
+        filtered = in_kind
+        heading, title, summary, intro = (
+            info["heading"], info["title"], info["summary"], info["intro"]
+        )
+
+    body = f'<h1>{esc(heading)}</h1><p class="intro">{esc(intro)}</p>'
+    subs = SUBCATEGORIES.get(kind, {})
+    if subs:
+        body += '<p class="chips">'
+        for slug, s in subs.items():
+            count = sum(
+                str(p.get("subcategory") or "").strip() == s["label"] for p in in_kind
+            )
+            body += f'<a href="/catalog/{kind}/{slug}">{esc(s["label"])} ({count})</a>'
+        body += "</p>"
+    if filtered:
+        body += f'<p>등록 상품 {len(filtered)}개</p><div class="grid">'
+        body += "".join(_card(p) for p in filtered)
+        body += "</div>"
+    else:
+        body += "<p>현재 등록된 상품이 없습니다. 입고 문의는 매장으로 연락해 주세요.</p>"
+
+    schemas = [{
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": heading,
+        "url": SITE + path,
+        "description": summary,
+    }]
+    hero = next((first_image(p) for p in filtered if first_image(p)), "")
+    return page(title, summary, path, body, image_url=hero, schemas=schemas, crumbs=crumbs)
 
 
 def sitemap(rows):
     urls = [SITE + "/"] + [SITE + "/catalog/" + kind for kind in CATEGORIES]
-    urls += [SITE + "/products/" + quote(str(p["id"]), safe="") for p in rows]
+    for kind, subs in SUBCATEGORIES.items():
+        for slug, info in subs.items():
+            has_items = any(
+                product_kind(p) == kind
+                and str(p.get("subcategory") or "").strip() == info["label"]
+                for p in rows
+            )
+            if has_items:
+                urls.append(SITE + f"/catalog/{kind}/{slug}")
+    product_entries = [(SITE + product_url(p), _lastmod(p)) for p in rows]
+    newest = max((mod for _, mod in product_entries if mod), default="")
+    entries = [(url, newest) for url in urls] + product_entries
+    xml = "".join(
+        "<url><loc>" + xml_escape(url) + "</loc>"
+        + ("<lastmod>" + mod + "</lastmod>" if mod else "")
+        + "</url>"
+        for url, mod in entries
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?><urlset '
         'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join("<url><loc>" + xml_escape(url) + "</loc></url>" for url in urls)
+        + xml
         + "</urlset>"
     )
+
+
+def _lastmod(p):
+    match = re.match(r"(\d{4}-\d{2}-\d{2})", str(p.get("updated_at") or "").strip())
+    return match.group(1) if match else ""
 
 
 def _clean_phone(value):
@@ -761,14 +1063,20 @@ def main():
             elif path.startswith("/catalog/"):
                 if kind not in CATEGORIES:
                     raise tornado.web.HTTPError(404)
+                if ident is not None and ident not in SUBCATEGORIES.get(kind, {}):
+                    raise tornado.web.HTTPError(404)
                 self.set_header("Content-Type", "text/html; charset=utf-8")
-                self.finish(catalog_page(kind, rows))
+                self.finish(catalog_page(kind, rows, ident))
             else:
                 product = next((p for p in rows if str(p["id"]) == str(kind)), None)
                 if product is None:
                     raise tornado.web.HTTPError(404)
                 self.set_header("Content-Type", "text/html; charset=utf-8")
                 self.finish(product_page(product))
+
+        async def head(self, kind=None, ident=None):
+            # 검색로봇의 HEAD 요청에도 405 대신 정상 응답 (본문은 Tornado가 생략)
+            await self.get(kind, ident)
 
     class Checkout(tornado.web.RequestHandler):
         async def get(self, product_id):
@@ -880,6 +1188,7 @@ def main():
                 (r"/robots\.txt", Public),
                 (r"/(?:app/static/)?sitemap\.xml", Public),
                 (r"/catalog/([^/]+)", Public),
+                (r"/catalog/([^/]+)/([^/]+)", Public),
                 (r"/products/([^/]+)", Public),
                 (r"/checkout/([^/]+)", Checkout),
                 (r"/api/orders/create", CreateOrder),
