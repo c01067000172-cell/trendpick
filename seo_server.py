@@ -103,10 +103,12 @@ SUBCATEGORIES = {
 
 # Official Toss Payments documentation test keys. They cannot charge real money.
 # When both merchant keys are added as Render env vars, those values take priority.
+# TOSS_MODE=live 로 설정하면 실결제 키가 아닐 때 결제를 막습니다(테스트 키로 조용히 운영되는 것 방지).
 DOCS_TEST_CLIENT_KEY = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm"
 DOCS_TEST_SECRET_KEY = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6"
 _env_client_key = os.getenv("TOSS_CLIENT_KEY", "").strip()
 _env_secret_key = os.getenv("TOSS_SECRET_KEY", "").strip()
+TOSS_MODE = os.getenv("TOSS_MODE", "test").strip().lower()
 if _env_client_key and _env_secret_key:
     TOSS_CLIENT_KEY = _env_client_key
     TOSS_SECRET_KEY = _env_secret_key
@@ -114,6 +116,22 @@ else:
     TOSS_CLIENT_KEY = DOCS_TEST_CLIENT_KEY
     TOSS_SECRET_KEY = DOCS_TEST_SECRET_KEY
 TOSS_TEST_MODE = TOSS_CLIENT_KEY.startswith("test_") or TOSS_SECRET_KEY.startswith("test_")
+
+PAYMENT_DISABLED_REASON = ""
+if TOSS_CLIENT_KEY.startswith("test_") != TOSS_SECRET_KEY.startswith("test_"):
+    PAYMENT_DISABLED_REASON = "토스 클라이언트 키와 시크릿 키의 모드(테스트/라이브)가 서로 다릅니다."
+elif TOSS_MODE == "live" and TOSS_TEST_MODE:
+    PAYMENT_DISABLED_REASON = "TOSS_MODE=live 이지만 라이브 결제 키가 설정되지 않았습니다."
+PAYMENT_ENABLED = not PAYMENT_DISABLED_REASON
+print(
+    "[PAYMENT] mode=" + ("test" if TOSS_TEST_MODE else "live")
+    + " enabled=" + str(PAYMENT_ENABLED)
+    + (" reason=" + PAYMENT_DISABLED_REASON if PAYMENT_DISABLED_REASON else ""),
+    flush=True,
+)
+
+PENDING_EXPIRE_MINUTES = 60      # 결제창만 열고 끝나지 않은 주문을 실패 처리하는 기준
+RECONCILE_INTERVAL_SECONDS = 300 # 토스 결제 상태와 주문 상태를 맞추는 주기
 
 _cache = {"time": 0, "rows": None}
 _client_cache = {"client": None, "sig": None}
@@ -360,7 +378,7 @@ def product_page(p):
             )
     detail = "/?" + urlencode({"page": "detail", "id": p["id"]})
     body += f'<p><a href="{esc(detail, quote=True)}">상품 상세 보기</a></p>'
-    if state == "판매중" and price > 0:
+    if PAYMENT_ENABLED and state == "판매중" and price > 0:
         label = "테스트 결제" if TOSS_TEST_MODE else "구매하기"
         body += (
             f'<p><a class="buy" href="/checkout/{quote(str(p["id"]), safe="")}">'
@@ -561,7 +579,55 @@ def _validate_order_payload(payload):
     }
 
 
+ACTIVE_ORDER_STATUSES = ("paid", "awaiting_deposit", "partial_canceled")
+
+TOSS_STATUS_MAP = {
+    "DONE": "paid",
+    "WAITING_FOR_DEPOSIT": "awaiting_deposit",
+    "CANCELED": "canceled",
+    "PARTIAL_CANCELED": "partial_canceled",
+    "ABORTED": "failed",
+    "EXPIRED": "failed",
+}
+
+
+def _log(message):
+    print("[PAYMENT] " + str(message)[:800], flush=True)
+
+
+def _require_payment_enabled():
+    if not PAYMENT_ENABLED:
+        raise RuntimeError("현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.")
+
+
+def _is_bike(product_or_order):
+    kind = str(
+        product_or_order.get("product_type") or product_or_order.get("type") or ""
+    )
+    return kind == "bike" or str(product_or_order.get("category") or "") == "중고 바이크"
+
+
+def _active_order_exists(product_id, exclude_order_id=None):
+    rows = (
+        db_client()
+        .table("orders")
+        .select("order_id,status,stock_reserved")
+        .eq("product_id", str(product_id))
+        .execute()
+        .data
+    ) or []
+    for row in rows:
+        if exclude_order_id and row.get("order_id") == exclude_order_id:
+            continue
+        if row.get("status") in ACTIVE_ORDER_STATUSES:
+            return True
+        if row.get("status") == "pending" and row.get("stock_reserved"):
+            return True
+    return False
+
+
 def create_order(payload):
+    _require_payment_enabled()
     data = _validate_order_payload(payload)
     product = product_by_id(data["product_id"])
     if product is None:
@@ -571,9 +637,11 @@ def create_order(payload):
     price = int(product.get("price") or 0)
     if price <= 0:
         raise ValueError("결제 가능한 상품 가격이 설정되지 않았습니다.")
+    if _is_bike(product) and _active_order_exists(product["id"]):
+        raise ValueError("이미 다른 고객이 결제했거나 결제 진행 중인 매물입니다.")
 
     quantity = 1
-    amount = price
+    amount = price * quantity
     order_id = "TJR_" + time.strftime("%Y%m%d%H%M%S") + "_" + uuid.uuid4().hex[:12]
     row = {
         "order_id": order_id,
@@ -609,24 +677,37 @@ def _basic_auth(secret_key):
     return "Basic " + token
 
 
-def _toss_post(path, payload, idempotency_key=None):
-    headers = {
-        "Authorization": _basic_auth(TOSS_SECRET_KEY),
-        "Content-Type": "application/json",
-    }
+def _toss_request(method, path, payload=None, idempotency_key=None):
+    headers = {"Authorization": _basic_auth(TOSS_SECRET_KEY)}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
-    response = requests.post(
-        "https://api.tosspayments.com" + path,
-        headers=headers,
-        json=payload,
-        timeout=15,
-    )
+    try:
+        response = requests.request(
+            method,
+            "https://api.tosspayments.com" + path,
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        return 599, {"code": "NETWORK_ERROR", "message": str(exc)[:300]}
     try:
         body = response.json()
     except ValueError:
         body = {"code": "INVALID_RESPONSE", "message": response.text[:500]}
+    if not isinstance(body, dict):
+        body = {"code": "INVALID_RESPONSE", "message": str(body)[:500]}
     return response.status_code, body
+
+
+def _toss_post(path, payload, idempotency_key=None):
+    return _toss_request("POST", path, payload, idempotency_key)
+
+
+def _toss_get(path):
+    return _toss_request("GET", path)
 
 
 def _order_row(order_id):
@@ -642,9 +723,151 @@ def _order_row(order_id):
     return rows[0] if isinstance(rows, list) and rows else None
 
 
+def _reserve_bike(order):
+    """중고 바이크는 승인 요청 전에 '판매중 → 예약중'으로 먼저 잡아 중복 판매를 막습니다."""
+    if not _is_bike(order) or order.get("stock_reserved"):
+        return True
+    if _active_order_exists(order.get("product_id"), exclude_order_id=order.get("order_id")):
+        return False
+    claimed = (
+        db_client()
+        .table("products")
+        .update({"condition": "예약중"})
+        .eq("id", order.get("product_id"))
+        .eq("condition", "판매중")
+        .execute()
+        .data
+    )
+    if not claimed:
+        return False
+    db_client().table("orders").update({"stock_reserved": True}).eq(
+        "order_id", order["order_id"]
+    ).execute()
+    order["stock_reserved"] = True
+    _cache.update(time=0, rows=None)
+    return True
+
+
+def _release_bike(order):
+    """이 주문이 잡아둔 바이크 예약만 풀어 '판매중'으로 되돌립니다."""
+    if not order.get("stock_reserved"):
+        return
+    client = db_client()
+    if not _active_order_exists(order.get("product_id"), exclude_order_id=order.get("order_id")):
+        client.table("products").update({"condition": "판매중"}).eq(
+            "id", order.get("product_id")
+        ).eq("condition", "예약중").execute()
+    client.table("orders").update({"stock_reserved": False}).eq(
+        "order_id", order["order_id"]
+    ).execute()
+    order["stock_reserved"] = False
+    _cache.update(time=0, rows=None)
+
+
+def _apply_toss_payment(order, result):
+    """토스 결제 객체를 기준으로 orders/payments를 맞춥니다. 금액·주문번호 불일치는 반영하지 않습니다."""
+    order_id = order["order_id"]
+    db_amount = int(order.get("amount") or 0)
+    if str(result.get("orderId") or "") != order_id:
+        raise RuntimeError("토스페이먼츠 주문번호 검증에 실패했습니다.")
+    if int(result.get("totalAmount") or 0) != db_amount:
+        raise RuntimeError("토스페이먼츠 결제 금액 검증에 실패했습니다.")
+
+    payment_key = str(result.get("paymentKey") or "").strip()
+    stored_key = str(order.get("payment_key") or "").strip()
+    if stored_key and payment_key and stored_key != payment_key:
+        raise RuntimeError("이미 다른 결제로 처리된 주문입니다.")
+
+    toss_status = str(result.get("status") or "")
+    order_status = TOSS_STATUS_MAP.get(toss_status, "pending")
+    method = str(result.get("method") or "")
+    easy = result.get("easyPay")
+    provider = str(easy.get("provider") or "") if isinstance(easy, dict) else ""
+    approved_at = result.get("approvedAt")
+    canceled_at = None
+    cancels = result.get("cancels")
+    if isinstance(cancels, list) and cancels and isinstance(cancels[-1], dict):
+        canceled_at = cancels[-1].get("canceledAt")
+
+    client = db_client()
+    if payment_key:
+        client.table("payments").upsert(
+            {
+                "order_id": order_id,
+                "payment_key": payment_key,
+                "amount": db_amount,
+                "status": toss_status or order_status,
+                "method": method or None,
+                "easy_pay_provider": provider or None,
+                "approved_at": approved_at,
+                "canceled_at": canceled_at,
+                "raw_response": result,
+                "is_test": bool(order.get("is_test")),
+            },
+            on_conflict="payment_key",
+        ).execute()
+
+    update = {"status": order_status}
+    if payment_key:
+        update["payment_key"] = payment_key
+    if method:
+        update["payment_method"] = method
+    if provider:
+        update["easy_pay_provider"] = provider
+    if approved_at:
+        update["approved_at"] = approved_at
+    if canceled_at:
+        update["canceled_at"] = canceled_at
+    if order_status in ("paid", "awaiting_deposit"):
+        update["failure_code"] = None
+        update["failure_message"] = None
+    elif order_status == "failed":
+        failure = result.get("failure") if isinstance(result.get("failure"), dict) else {}
+        update["failure_code"] = str(failure.get("code") or toss_status)[:100]
+        update["failure_message"] = str(failure.get("message") or "결제가 완료되지 않았습니다.")[:500]
+    client.table("orders").update(update).eq("order_id", order_id).execute()
+    order.update(update)
+
+    if order_status in ("canceled", "failed"):
+        _release_bike(order)
+
+    return {
+        "order_id": order_id,
+        "amount": db_amount,
+        "status": order_status,
+        "method": method,
+        "provider": provider,
+        "is_test": bool(order.get("is_test")),
+    }
+
+
+def sync_order_from_toss(order_id):
+    """토스에 저장된 실제 결제 상태로 주문을 맞춥니다(웹훅·자동 점검용)."""
+    order = _order_row(order_id)
+    if order is None:
+        return None
+    if bool(order.get("is_test")) != TOSS_TEST_MODE:
+        return None  # 다른 모드(테스트/라이브) 키로는 조회할 수 없음
+    status_code, result = _toss_get("/v1/payments/orders/" + quote(str(order_id), safe=""))
+    if status_code == 404:
+        return {"order_id": order_id, "status": order.get("status"), "not_found": True}
+    if status_code < 200 or status_code >= 300:
+        _log(f"sync failed order={order_id} http={status_code} code={result.get('code')}")
+        return None
+    toss_status = str(result.get("status") or "")
+    if toss_status not in TOSS_STATUS_MAP:
+        return {"order_id": order_id, "status": order.get("status"), "toss_status": toss_status}
+    if order.get("status") == "canceled" and toss_status != "CANCELED":
+        return {"order_id": order_id, "status": "canceled"}
+    return _apply_toss_payment(order, result)
+
+
 def confirm_order(payment_key, order_id, redirected_amount):
+    _require_payment_enabled()
     payment_key = str(payment_key or "").strip()
     order_id = str(order_id or "").strip()
+    if not payment_key or not order_id:
+        raise ValueError("결제 정보가 올바르지 않습니다.")
     try:
         redirected_amount = int(redirected_amount)
     except (TypeError, ValueError):
@@ -653,18 +876,11 @@ def confirm_order(payment_key, order_id, redirected_amount):
     order = _order_row(order_id)
     if order is None:
         raise ValueError("주문을 찾을 수 없습니다.")
+    if bool(order.get("is_test")) != TOSS_TEST_MODE:
+        raise ValueError("현재 결제 모드와 다른 주문입니다.")
     db_amount = int(order.get("amount") or 0)
-    if redirected_amount != db_amount:
-        db_client().table("orders").update(
-            {
-                "status": "failed",
-                "failure_code": "AMOUNT_MISMATCH",
-                "failure_message": "결제 요청 금액과 주문 금액이 다릅니다.",
-            }
-        ).eq("order_id", order_id).execute()
-        raise ValueError("결제 금액 검증에 실패했습니다.")
 
-    if order.get("status") in ("paid", "awaiting_deposit"):
+    if order.get("status") in ACTIVE_ORDER_STATUSES:
         if str(order.get("payment_key") or "") != payment_key:
             raise ValueError("이미 다른 결제로 처리된 주문입니다.")
         return {
@@ -675,97 +891,70 @@ def confirm_order(payment_key, order_id, redirected_amount):
             "provider": str(order.get("easy_pay_provider") or ""),
             "is_test": bool(order.get("is_test")),
         }
-
     if order.get("status") == "canceled":
         raise ValueError("이미 취소된 주문입니다.")
+    if order.get("status") == "failed":
+        raise ValueError("만료되었거나 실패 처리된 주문입니다. 다시 주문해 주세요.")
+
+    if redirected_amount != db_amount:
+        db_client().table("orders").update(
+            {
+                "status": "failed",
+                "failure_code": "AMOUNT_MISMATCH",
+                "failure_message": "결제 요청 금액과 주문 금액이 다릅니다.",
+            }
+        ).eq("order_id", order_id).execute()
+        _release_bike(order)
+        raise ValueError("결제 금액 검증에 실패했습니다.")
+
+    if not _reserve_bike(order):
+        db_client().table("orders").update(
+            {
+                "status": "failed",
+                "failure_code": "ALREADY_RESERVED",
+                "failure_message": "다른 고객이 먼저 결제한 매물입니다.",
+            }
+        ).eq("order_id", order_id).execute()
+        raise ValueError("다른 고객이 먼저 결제한 매물입니다. 결제는 승인되지 않았습니다.")
 
     status_code, result = _toss_post(
         "/v1/payments/confirm",
-        {
-            "paymentKey": payment_key,
-            "orderId": order_id,
-            "amount": db_amount,
-        },
+        {"paymentKey": payment_key, "orderId": order_id, "amount": db_amount},
+        idempotency_key="confirm-" + order_id,
     )
 
     if status_code < 200 or status_code >= 300:
         code = str(result.get("code") or "PAYMENT_CONFIRM_FAILED")[:100]
         message = str(result.get("message") or "결제 승인에 실패했습니다.")[:500]
-        new_status = "pending" if status_code >= 500 else "failed"
+        if code == "ALREADY_PROCESSED_PAYMENT" or status_code >= 500:
+            # 승인 응답을 못 받았거나 이미 승인된 경우: 토스 실제 상태로 맞춥니다.
+            synced = sync_order_from_toss(order_id)
+            if synced and synced.get("status") in ACTIVE_ORDER_STATUSES:
+                return synced
+            db_client().table("orders").update(
+                {"failure_code": code, "failure_message": message}
+            ).eq("order_id", order_id).execute()
+            _log(f"confirm pending order={order_id} http={status_code} code={code}")
+            raise RuntimeError(
+                "결제 승인 결과를 아직 확인하지 못했습니다. 잠시 후 자동으로 확인되며, "
+                "결제가 되지 않았다면 청구되지 않습니다."
+            )
         db_client().table("orders").update(
-            {
-                "status": new_status,
-                "failure_code": code,
-                "failure_message": message,
-            }
+            {"status": "failed", "failure_code": code, "failure_message": message}
         ).eq("order_id", order_id).execute()
+        _release_bike(order)
         raise RuntimeError(message)
 
-    if str(result.get("orderId") or "") != order_id:
-        raise RuntimeError("토스페이먼츠 주문번호 검증에 실패했습니다.")
-    if int(result.get("totalAmount") or 0) != db_amount:
-        raise RuntimeError("토스페이먼츠 승인 금액 검증에 실패했습니다.")
-
-    toss_status = str(result.get("status") or "")
-    if toss_status == "DONE":
-        order_status = "paid"
-    elif toss_status == "WAITING_FOR_DEPOSIT":
-        order_status = "awaiting_deposit"
-    else:
-        order_status = "pending"
-
-    method = str(result.get("method") or "")
-    easy = result.get("easyPay")
-    provider = str(easy.get("provider") or "") if isinstance(easy, dict) else ""
-    approved_at = result.get("approvedAt")
-
-    client = db_client()
-    client.table("payments").upsert(
-        {
-            "order_id": order_id,
-            "payment_key": payment_key,
-            "amount": db_amount,
-            "status": toss_status or order_status,
-            "method": method or None,
-            "easy_pay_provider": provider or None,
-            "approved_at": approved_at,
-            "raw_response": result,
-            "is_test": TOSS_TEST_MODE,
-        },
-        on_conflict="payment_key",
-    ).execute()
-    client.table("orders").update(
-        {
-            "status": order_status,
-            "payment_key": payment_key,
-            "payment_method": method or None,
-            "easy_pay_provider": provider or None,
-            "approved_at": approved_at,
-            "failure_code": None,
-            "failure_message": None,
-        }
-    ).eq("order_id", order_id).execute()
-
-    if order_status == "paid" and str(order.get("product_type") or "") == "bike":
-        client.table("products").update({"condition": "예약중"}).eq(
-            "id", order.get("product_id")
-        ).eq("condition", "판매중").execute()
-        _cache.update(time=0, rows=None)
-
-    return {
-        "order_id": order_id,
-        "amount": db_amount,
-        "status": order_status,
-        "method": method,
-        "provider": provider,
-        "is_test": TOSS_TEST_MODE,
-    }
+    return _apply_toss_payment(order, result)
 
 
 def mark_failed_order(order_id, code, message):
     if not order_id:
         return
     try:
+        order = _order_row(order_id)
+        if order is None or order.get("status") != "pending" or order.get("stock_reserved"):
+            return
         db_client().table("orders").update(
             {
                 "status": "failed",
@@ -775,6 +964,87 @@ def mark_failed_order(order_id, code, message):
         ).eq("order_id", str(order_id)).eq("status", "pending").execute()
     except Exception:
         pass
+
+
+def reconcile_orders():
+    """결제 대기·입금 대기 주문을 토스 상태와 맞추고, 오래된 미결제 주문을 만료 처리합니다."""
+    if not PAYMENT_ENABLED:
+        return
+    client = db_client()
+    cutoff_recent = time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 10 * 60)
+    )
+    cutoff_expire = time.time() - PENDING_EXPIRE_MINUTES * 60
+    rows = (
+        client.table("orders")
+        .select("order_id,status,created_at,is_test,stock_reserved")
+        .in_("status", ["pending", "awaiting_deposit"])
+        .eq("is_test", TOSS_TEST_MODE)
+        .lt("created_at", cutoff_recent)
+        .order("created_at")
+        .limit(50)
+        .execute()
+        .data
+    ) or []
+    for row in rows:
+        order_id = row.get("order_id")
+        try:
+            synced = sync_order_from_toss(order_id)
+            if row.get("status") != "pending":
+                continue
+            if synced is None:
+                continue  # 토스 조회 실패 시에는 다음 주기에 다시 확인
+            still_pending = (
+                synced.get("status") == "pending"
+                or synced.get("not_found")
+                or synced.get("toss_status")
+            )
+            if still_pending and _created_ts(row.get("created_at")) < cutoff_expire:
+                order = _order_row(order_id)
+                if order and order.get("status") == "pending":
+                    client.table("orders").update(
+                        {
+                            "status": "failed",
+                            "failure_code": "EXPIRED",
+                            "failure_message": "결제가 완료되지 않아 주문이 만료되었습니다.",
+                        }
+                    ).eq("order_id", order_id).eq("status", "pending").execute()
+                    _release_bike(order)
+                    _log(f"expired order={order_id}")
+        except Exception as exc:
+            _log(f"reconcile error order={order_id} {type(exc).__name__}: {exc}")
+    now = time.monotonic()
+    for ip in list(_order_rate):
+        if not [t for t in _order_rate[ip] if now - t < 600]:
+            _order_rate.pop(ip, None)
+
+
+def _created_ts(value):
+    from datetime import datetime, timezone
+    text = str(value or "").strip().replace("Z", "+00:00").replace(" ", "T", 1)
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        # 소수점 자릿수가 6자리가 아닌 경우 등
+        moment = datetime.fromisoformat(re.sub(r"\.\d+", "", text))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.timestamp()
+
+
+def handle_toss_webhook(body):
+    """토스 웹훅은 내용만 믿지 않고, 토스 API로 실제 결제 상태를 다시 조회해 반영합니다."""
+    if not isinstance(body, dict):
+        return
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    order_id = str(data.get("orderId") or body.get("orderId") or "").strip()
+    if not order_id or not order_id.startswith("TJR_"):
+        return
+    result = sync_order_from_toss(order_id)
+    _log(
+        f"webhook event={body.get('eventType') or 'DEPOSIT_CALLBACK'} "
+        f"order={order_id} result={result.get('status') if result else 'skip'}"
+    )
 
 
 def admin_orders(limit=100):
@@ -801,6 +1071,8 @@ def cancel_order(order_id, reason):
         raise ValueError("주문을 찾을 수 없습니다.")
     if order.get("status") not in ("paid", "partial_canceled"):
         raise ValueError("결제완료 주문만 취소할 수 있습니다.")
+    if bool(order.get("is_test")) != TOSS_TEST_MODE:
+        raise ValueError("현재 결제 모드와 다른 주문이라 취소할 수 없습니다.")
     payment_key = str(order.get("payment_key") or "").strip()
     if not payment_key:
         raise ValueError("결제키가 없는 주문입니다.")
@@ -815,35 +1087,15 @@ def cancel_order(order_id, reason):
         idempotency_key="cancel-" + str(order_id),
     )
     if status_code < 200 or status_code >= 300:
+        if str(result.get("code") or "") == "ALREADY_CANCELED_PAYMENT":
+            sync_order_from_toss(order_id)
         raise RuntimeError(str(result.get("message") or "결제 취소에 실패했습니다."))
 
-    toss_status = str(result.get("status") or "CANCELED")
-    canceled_at = None
-    cancels = result.get("cancels")
-    if isinstance(cancels, list) and cancels:
-        canceled_at = cancels[-1].get("canceledAt")
-
-    client = db_client()
-    client.table("orders").update(
-        {
-            "status": "canceled" if toss_status == "CANCELED" else "partial_canceled",
-            "canceled_at": canceled_at,
-        }
-    ).eq("order_id", str(order_id)).execute()
-    client.table("payments").update(
-        {
-            "status": toss_status,
-            "canceled_at": canceled_at,
-            "raw_response": result,
-        }
-    ).eq("payment_key", payment_key).execute()
-
-    if toss_status == "CANCELED" and str(order.get("product_type") or "") == "bike":
-        client.table("products").update({"condition": "판매중"}).eq(
-            "id", order.get("product_id")
-        ).eq("condition", "예약중").execute()
-        _cache.update(time=0, rows=None)
-
+    _apply_toss_payment(order, result)
+    if order.get("status") == "canceled" and _is_bike(order) and not order.get("stock_reserved"):
+        # 이전 버전으로 결제된 주문(예약 표시 없음)도 바이크 예약을 풀어 줍니다.
+        order["stock_reserved"] = True
+        _release_bike(order)
     return result
 
 
@@ -1001,6 +1253,10 @@ small{{color:#aaa}}</style></head><body><div class="box"><h1>{esc(title)}</h1>
 
 
 def _request_ip(request):
+    for header in ("CF-Connecting-IP", "True-Client-IP"):
+        value = request.headers.get(header, "").strip()
+        if value:
+            return value
     forwarded = request.headers.get("X-Forwarded-For", "")
     return (forwarded.split(",", 1)[0].strip() if forwarded else request.remote_ip) or "unknown"
 
@@ -1081,10 +1337,16 @@ def main():
     class Checkout(tornado.web.RequestHandler):
         async def get(self, product_id):
             self.set_header("Cache-Control", "no-store")
-            origin = self.request.headers.get("Origin", "")
-            if origin:
-                self.set_header("Access-Control-Allow-Origin", origin)
-            self.set_header("Vary", "Origin")
+            self.set_header("X-Robots-Tag", "noindex")
+            if not PAYMENT_ENABLED:
+                self.set_status(503)
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+                self.finish(payment_result_page(
+                    "결제 일시 중지",
+                    "현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.",
+                    False,
+                ))
+                return
             try:
                 product = await asyncio.to_thread(product_by_id, product_id)
             except Exception:
@@ -1101,10 +1363,11 @@ def main():
     class CreateOrder(tornado.web.RequestHandler):
         def options(self):
             origin = self.request.headers.get("Origin", "")
-            if origin:
+            if origin and (urlparse(origin).hostname or "").lower() in ALLOWED_HOSTS:
                 self.set_header("Access-Control-Allow-Origin", origin)
-            self.set_header("Access-Control-Allow-Headers", "Content-Type")
-            self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.set_header("Access-Control-Allow-Headers", "Content-Type")
+                self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.set_header("Vary", "Origin")
             self.set_status(204)
             self.finish()
 
@@ -1114,6 +1377,10 @@ def main():
             if not _same_origin(self.request):
                 self.set_status(403)
                 self.finish(json.dumps({"message": "허용되지 않은 요청입니다."}, ensure_ascii=False))
+                return
+            if not PAYMENT_ENABLED:
+                self.set_status(503)
+                self.finish(json.dumps({"message": "현재 온라인 결제를 사용할 수 없습니다."}, ensure_ascii=False))
                 return
             if not _allow_order_attempt(_request_ip(self.request)):
                 self.set_status(429)
@@ -1132,7 +1399,11 @@ def main():
             except ValueError as exc:
                 self.set_status(400)
                 self.finish(json.dumps({"message": str(exc)}, ensure_ascii=False))
-            except Exception:
+            except RuntimeError as exc:
+                self.set_status(503)
+                self.finish(json.dumps({"message": str(exc)}, ensure_ascii=False))
+            except Exception as exc:
+                _log(f"create order error {type(exc).__name__}: {exc}")
                 self.set_status(500)
                 self.finish(json.dumps({"message": "주문 생성 중 오류가 발생했습니다."}, ensure_ascii=False))
 
@@ -1140,6 +1411,7 @@ def main():
         async def get(self):
             self.set_header("Cache-Control", "no-store")
             self.set_header("Content-Type", "text/html; charset=utf-8")
+            self.set_header("X-Robots-Tag", "noindex")
             payment_key = self.get_query_argument("paymentKey", default="")
             order_id = self.get_query_argument("orderId", default="")
             amount = self.get_query_argument("amount", default="")
@@ -1159,11 +1431,20 @@ def main():
                     else "결제가 정상적으로 승인되었습니다."
                 )
                 self.finish(payment_result_page("결제 완료", status_message, True, details))
-            except Exception as exc:
+            except (ValueError, RuntimeError) as exc:
                 self.finish(
                     payment_result_page(
                         "결제 확인 실패",
                         str(exc) or "결제 승인 결과를 확인하지 못했습니다.",
+                        False,
+                    )
+                )
+            except Exception as exc:
+                _log(f"confirm error {type(exc).__name__}: {exc}")
+                self.finish(
+                    payment_result_page(
+                        "결제 확인 실패",
+                        "결제 승인 결과를 확인하지 못했습니다. 잠시 후 자동으로 다시 확인됩니다.",
                         False,
                     )
                 )
@@ -1172,11 +1453,55 @@ def main():
         async def get(self):
             self.set_header("Cache-Control", "no-store")
             self.set_header("Content-Type", "text/html; charset=utf-8")
+            self.set_header("X-Robots-Tag", "noindex")
             order_id = self.get_query_argument("orderId", default="")
             code = self.get_query_argument("code", default="PAYMENT_FAILED")
             message = self.get_query_argument("message", default="결제가 취소되었거나 실패했습니다.")
             await asyncio.to_thread(mark_failed_order, order_id, code, message)
             self.finish(payment_result_page("결제 실패", message, False))
+
+    class TossWebhook(tornado.web.RequestHandler):
+        async def post(self):
+            self.set_header("Content-Type", "application/json; charset=utf-8")
+            if len(self.request.body or b"") > 65536:
+                self.set_status(413)
+                self.finish("{}")
+                return
+            try:
+                body = json.loads((self.request.body or b"{}").decode("utf-8"))
+            except ValueError:
+                self.set_status(400)
+                self.finish("{}")
+                return
+            try:
+                await asyncio.to_thread(handle_toss_webhook, body)
+            except Exception as exc:
+                _log(f"webhook error {type(exc).__name__}: {exc}")
+                self.set_status(500)  # 토스가 나중에 다시 보내도록
+                self.finish("{}")
+                return
+            self.finish("{}")
+
+    async def _reconcile_once():
+        try:
+            await asyncio.to_thread(reconcile_orders)
+        except Exception as exc:
+            _log(f"reconcile loop error {type(exc).__name__}: {exc}")
+
+    reconcile_state = {"started": False}
+
+    def _start_reconcile():
+        if reconcile_state["started"]:
+            return
+        reconcile_state["started"] = True
+        from tornado.ioloop import PeriodicCallback
+
+        timer = PeriodicCallback(
+            lambda: asyncio.ensure_future(_reconcile_once()),
+            RECONCILE_INTERVAL_SECONDS * 1000,
+        )
+        timer.start()
+        _log("reconcile timer started")
 
     original = Server._create_app
 
@@ -1194,8 +1519,13 @@ def main():
                 (r"/api/orders/create", CreateOrder),
                 (r"/payment/success", PaymentSuccess),
                 (r"/payment/fail", PaymentFail),
+                (r"/api/toss/webhook", TossWebhook),
             ],
         )
+        try:
+            _start_reconcile()
+        except Exception as exc:
+            _log(f"reconcile timer not started {type(exc).__name__}: {exc}")
         return application
 
     Server._create_app = create_app
