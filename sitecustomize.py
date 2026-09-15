@@ -103,7 +103,12 @@ def _verify():
 
 
 def _install_checkout_xsrf_patch():
-    """Keep Streamlit XSRF protection except for our same-origin order API."""
+    """Keep Streamlit XSRF protection except for our order API and Toss webhook.
+
+    /api/orders/create checks same-origin itself; /api/toss/webhook is called by
+    Toss servers (no Origin header) and never trusts the body - it re-reads the
+    payment from the Toss API with the secret key.
+    """
     try:
         import tornado.web
     except Exception as exc:
@@ -122,7 +127,7 @@ def _install_checkout_xsrf_patch():
     def patched_check_xsrf_cookie(self):
         request = getattr(self, "request", None)
         path = getattr(request, "path", "") if request is not None else ""
-        if path == "/api/orders/create":
+        if path in ("/api/orders/create", "/api/toss/webhook"):
             origin = request.headers.get("Origin", "").strip()
             if origin:
                 try:
