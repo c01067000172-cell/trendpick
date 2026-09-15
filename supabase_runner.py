@@ -11,6 +11,8 @@ from datetime import datetime as _analytics_datetime, timedelta as _analytics_ti
 from zoneinfo import ZoneInfo as _analytics_ZoneInfo
 
 PAYMENT_TEST_MODE = bool(_payment_backend.TOSS_TEST_MODE)
+PAYMENT_ENABLED = bool(getattr(_payment_backend, \"PAYMENT_ENABLED\", True))
+PAYMENT_DISABLED_REASON = str(getattr(_payment_backend, \"PAYMENT_DISABLED_REASON\", \"\"))
 
 _jinbike_local_load_products = load_products
 _jinbike_old_error = getattr(st, \"error\", None)
@@ -207,6 +209,8 @@ def render_order_admin():
     st.subheader(\"주문 · 결제 관리\")
     if PAYMENT_TEST_MODE:
         st.warning(\"현재 토스페이먼츠 TEST 모드입니다. 테스트 결제는 실제 금액이 청구되지 않습니다.\")
+    if not PAYMENT_ENABLED:
+        st.error(\"온라인 결제가 중지된 상태입니다: \" + PAYMENT_DISABLED_REASON)
 
     try:
         rows = _payment_backend.admin_orders(200)
@@ -287,6 +291,20 @@ def render_order_admin():
     if order.get(\"failure_message\"):
         st.error(str(order.get(\"failure_code\") or \"결제 오류\") + \" · \" + str(order.get(\"failure_message\")))
 
+    if order.get(\"status\") in (\"pending\", \"awaiting_deposit\", \"paid\") and bool(order.get(\"is_test\")) == PAYMENT_TEST_MODE:
+        if st.button(\"토스 결제 상태 다시 확인\", key=\"sync_payment_\" + str(selected_id)):
+            try:
+                synced = _payment_backend.sync_order_from_toss(selected_id)
+                if synced is None:
+                    st.warning(\"토스 결제 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.\")
+                elif synced.get(\"not_found\"):
+                    st.info(\"토스에 결제 기록이 없습니다. 고객이 결제를 완료하지 않은 주문입니다.\")
+                else:
+                    st.success(\"토스 결제 상태를 반영했습니다: \" + str(status_labels.get(synced.get(\"status\"), synced.get(\"status\"))))
+                    st.rerun()
+            except Exception as exc:
+                st.error(\"상태 확인 실패: \" + str(exc))
+
     if order.get(\"status\") == \"paid\" and order.get(\"payment_key\"):
         st.markdown(\"#### 결제 취소\")
         cancel_reason = st.text_input(
@@ -340,7 +358,8 @@ DETAIL_PAYMENT_REPLACEMENT = """        st.write(detail_text)
         render_detail_files(detail_files)
 
         if (
-            str(product.get(\"condition\", \"\")) == \"판매중\"
+            globals().get(\"PAYMENT_ENABLED\", True)
+            and str(product.get(\"condition\", \"\")) == \"판매중\"
             and int(product.get(\"price\", 0) or 0) > 0
             and not product.get(\"demo\")
         ):
