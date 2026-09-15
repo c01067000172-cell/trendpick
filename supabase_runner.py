@@ -84,7 +84,7 @@ def _record_real_pageview():
 
     category = str(get_param(\"cat\", \"\") or \"\")
     subcategory = str(get_param(\"sub\", \"\") or \"\")
-    product_id = str(get_param(\"id\", \"\") or \"\")
+    product_id = str(get_param(\"detail\", \"\") or get_param(\"id\", \"\") or \"\")
     route_key = (page, category, subcategory, product_id)
 
     if \"_analytics_session_id\" not in st.session_state:
@@ -278,6 +278,17 @@ def render_order_admin():
 
     st.write(\"주문번호: \" + str(order.get(\"order_id\") or \"\"))
     st.write(\"상품: \" + str(order.get(\"product_name\") or \"\"))
+    try:
+        _order_lines = _payment_backend.order_items(order)
+    except Exception:
+        _order_lines = []
+    for _line in _order_lines:
+        st.write(
+            \"· \" + str(_line.get(\"product_name\") or \"\")
+            + ((\" / \" + str(_line.get(\"option_name\"))) if _line.get(\"option_name\") else \"\")
+            + \" × \" + str(_line.get(\"quantity\") or 1)
+            + \" = \" + format(int(_line.get(\"amount\") or 0), \",\") + \"원\"
+        )
     st.write(\"금액: \" + f\"{int(order.get('amount') or 0):,}원\")
     st.write(\"주문자: \" + str(order.get(\"buyer_name\") or \"\") + \" / \" + str(order.get(\"buyer_phone\") or \"\"))
     if order.get(\"buyer_email\"):
@@ -390,11 +401,12 @@ ADMIN_TABS_TARGET = """    tab1, tab2, tab3 = st.tabs(
         render_manage_products()
     with tab3:
         render_site_status()"""
-ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab4 = st.tabs(
+ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab_feedback, tab4 = st.tabs(
         [
             \"상품 등록\",
             \"상품 수정 · 삭제\",
             \"주문 · 결제\",
+            \"문의 · 후기\",
             \"사이트 현황\",
         ]
     )
@@ -406,6 +418,8 @@ ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab4 = st.tabs(
         render_manage_products()
     with tab3:
         render_order_admin()
+    with tab_feedback:
+        render_feedback_admin()
     with tab4:
         render_site_status()"""
 
