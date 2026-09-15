@@ -2571,10 +2571,10 @@ safe_markdown(
 
         © TWO J ROAD. 모든 권리 보유.<br>
 
-        <a href="/catalog/wear" target="_self">상품 안내</a> ·
-        <a href="/app/static/sitemap.xml">
-            사이트맵
-        </a>
+        <a href="/catalog/bike" target="_self">중고 바이크</a> ·
+        <a href="/catalog/wear" target="_self">바이크 의류</a> ·
+        <a href="/catalog/gear" target="_self">바이크 용품</a> ·
+        <a href="/sitemap.xml" target="_self">사이트맵</a>
     </div>
     """,
     unsafe_allow_html=True
