@@ -130,6 +130,7 @@ print(
     flush=True,
 )
 
+VISITOR_COOKIE = "twoj_vid"
 PENDING_EXPIRE_MINUTES = 60      # 결제창만 열고 끝나지 않은 주문을 실패 처리하는 기준
 RECONCILE_INTERVAL_SECONDS = 300 # 토스 결제 상태와 주문 상태를 맞추는 주기
 
@@ -560,7 +561,7 @@ def _validate_order_payload(payload):
     postal_code = str(payload.get("postal_code") or "").strip()[:20]
     address1 = str(payload.get("address1") or "").strip()
     address2 = str(payload.get("address2") or "").strip()[:200]
-    if not product_id:
+    if not product_id and not payload.get("items"):
         raise ValueError("상품 정보가 없습니다.")
     if not 2 <= len(buyer_name) <= 50:
         raise ValueError("주문자 이름을 2~50자로 입력해 주세요.")
@@ -600,6 +601,51 @@ def _require_payment_enabled():
         raise RuntimeError("현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.")
 
 
+MAX_CART_LINES = 20
+MAX_LINE_QTY = 20
+
+
+def product_options(product_id):
+    """상품 옵션(이름·추가금액·재고). 옵션이 없으면 빈 목록."""
+    rows = (
+        db_client()
+        .table("product_options")
+        .select("name,extra_price,stock,sort")
+        .eq("product_id", str(product_id))
+        .order("sort")
+        .execute()
+        .data
+    ) or []
+    return sorted(rows, key=lambda r: (int(r.get("sort") or 0), str(r.get("name") or "")))
+
+
+def order_items(order_or_id):
+    order = order_or_id if isinstance(order_or_id, dict) else _order_row(order_or_id)
+    if not order:
+        return []
+    rows = (
+        db_client()
+        .table("order_items")
+        .select("product_id,product_type,product_name,option_name,unit_price,quantity,amount")
+        .eq("order_id", order["order_id"])
+        .order("id")
+        .execute()
+        .data
+    ) or []
+    if rows:
+        return rows
+    # 장바구니 도입 전 주문(단일 상품)
+    return [{
+        "product_id": order.get("product_id"),
+        "product_type": order.get("product_type") or "",
+        "product_name": order.get("product_name") or "",
+        "option_name": None,
+        "unit_price": int(order.get("unit_price") or 0),
+        "quantity": int(order.get("quantity") or 1),
+        "amount": int(order.get("amount") or 0),
+    }]
+
+
 def _is_bike(product_or_order):
     kind = str(
         product_or_order.get("product_type") or product_or_order.get("type") or ""
@@ -608,17 +654,29 @@ def _is_bike(product_or_order):
 
 
 def _active_order_exists(product_id, exclude_order_id=None):
+    """이 상품을 포함한 결제완료·입금대기·예약중(승인 진행) 주문이 있는지."""
+    client = db_client()
+    order_ids = {
+        row.get("order_id")
+        for row in (
+            client.table("order_items").select("order_id")
+            .eq("product_id", str(product_id)).execute().data or []
+        )
+    }
+    legacy = (
+        client.table("orders").select("order_id")
+        .eq("product_id", str(product_id)).execute().data or []
+    )
+    order_ids.update(row.get("order_id") for row in legacy)
+    order_ids.discard(None)
+    order_ids.discard(exclude_order_id)
+    if not order_ids:
+        return False
     rows = (
-        db_client()
-        .table("orders")
-        .select("order_id,status,stock_reserved")
-        .eq("product_id", str(product_id))
-        .execute()
-        .data
-    ) or []
+        client.table("orders").select("order_id,status,stock_reserved")
+        .in_("order_id", sorted(order_ids)).execute().data or []
+    )
     for row in rows:
-        if exclude_order_id and row.get("order_id") == exclude_order_id:
-            continue
         if row.get("status") in ACTIVE_ORDER_STATUSES:
             return True
         if row.get("status") == "pending" and row.get("stock_reserved"):
@@ -626,30 +684,126 @@ def _active_order_exists(product_id, exclude_order_id=None):
     return False
 
 
+def _parse_cart_items(raw_items):
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("주문할 상품이 없습니다.")
+    merged = {}
+    for raw in raw_items[: MAX_CART_LINES * 2]:
+        if not isinstance(raw, dict):
+            continue
+        product_id = str(raw.get("product_id") or raw.get("p") or "").strip()[:64]
+        option = str(raw.get("option") or raw.get("o") or "").strip()[:60]
+        try:
+            qty = int(raw.get("qty") or raw.get("q") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        if not product_id or qty <= 0:
+            continue
+        key = (product_id, option)
+        merged[key] = min(MAX_LINE_QTY, merged.get(key, 0) + qty)
+    if not merged:
+        raise ValueError("주문할 상품이 없습니다.")
+    if len(merged) > MAX_CART_LINES:
+        raise ValueError(f"한 번에 최대 {MAX_CART_LINES}개 상품까지 주문할 수 있습니다.")
+    return [{"product_id": k[0], "option": k[1], "qty": v} for k, v in merged.items()]
+
+
+def quote_items(raw_items, strict=True):
+    """장바구니 항목을 DB 기준 가격·재고로 검증합니다. strict=False면 문제 항목도 사유와 함께 돌려줍니다."""
+    items = _parse_cart_items(raw_items)
+    lines, total, problems = [], 0, []
+    product_cache, option_cache = {}, {}
+    for item in items:
+        pid, option, qty = item["product_id"], item["option"], item["qty"]
+        if pid not in product_cache:
+            product_cache[pid] = product_by_id(pid)
+            option_cache[pid] = product_options(pid) if product_cache[pid] else []
+        product = product_cache[pid]
+        line = {"product_id": pid, "option": option, "qty": qty, "ok": False, "error": ""}
+        if product is None:
+            line["error"] = "판매하지 않는 상품입니다."
+        else:
+            options = option_cache[pid]
+            unit = int(product.get("price") or 0)
+            line.update({
+                "name": display_name(product),
+                "type": str(product.get("type") or ""),
+                "image": first_image(product),
+                "unit_price": unit,
+                "max_qty": MAX_LINE_QTY,
+            })
+            if str(product.get("condition") or "") != "판매중":
+                line["error"] = "현재 " + (str(product.get("condition") or "구매 불가")) + " 상품입니다."
+            elif unit <= 0:
+                line["error"] = "가격이 설정되지 않은 상품입니다."
+            elif options and not option:
+                line["error"] = "옵션을 선택해 주세요."
+            elif option and not options:
+                line["error"] = "선택한 옵션이 없는 상품입니다."
+            else:
+                if options:
+                    match = next((o for o in options if str(o.get("name")) == option), None)
+                    if match is None:
+                        line["error"] = "선택한 옵션을 찾을 수 없습니다."
+                    else:
+                        unit += int(match.get("extra_price") or 0)
+                        line["unit_price"] = unit
+                        stock = match.get("stock")
+                        if stock is not None:
+                            line["max_qty"] = min(MAX_LINE_QTY, int(stock))
+                            if int(stock) <= 0:
+                                line["error"] = "품절된 옵션입니다."
+                            elif qty > int(stock):
+                                line["error"] = f"재고가 {int(stock)}개 남았습니다."
+                if not line["error"] and _is_bike(product):
+                    line["max_qty"] = 1
+                    if qty != 1:
+                        line["qty"] = qty = 1
+                    if _active_order_exists(pid):
+                        line["error"] = "다른 고객이 결제했거나 결제 진행 중인 매물입니다."
+            if not line["error"]:
+                line["ok"] = True
+                line["amount"] = unit * qty
+                total += unit * qty
+        if not line["ok"]:
+            problems.append((line.get("name") or pid) + ": " + line["error"])
+        lines.append(line)
+    if strict and problems:
+        raise ValueError(" / ".join(problems[:3]))
+    return {"lines": lines, "total": total, "ok": not problems}
+
+
 def create_order(payload):
     _require_payment_enabled()
     data = _validate_order_payload(payload)
-    product = product_by_id(data["product_id"])
-    if product is None:
-        raise ValueError("판매 상품을 찾을 수 없습니다.")
-    if str(product.get("condition") or "") != "판매중":
-        raise ValueError("현재 결제할 수 없는 상품입니다.")
-    price = int(product.get("price") or 0)
-    if price <= 0:
-        raise ValueError("결제 가능한 상품 가격이 설정되지 않았습니다.")
-    if _is_bike(product) and _active_order_exists(product["id"]):
-        raise ValueError("이미 다른 고객이 결제했거나 결제 진행 중인 매물입니다.")
+    raw_items = payload.get("items")
+    if not raw_items:
+        raw_items = [{"product_id": data["product_id"], "qty": 1}]
+    quote_result = quote_items(raw_items, strict=True)
+    lines = quote_result["lines"]
+    amount = int(quote_result["total"])
+    if amount <= 0:
+        raise ValueError("결제할 금액이 없습니다.")
+    try:
+        client_total = int(payload.get("expected_amount") or 0)
+    except (TypeError, ValueError):
+        client_total = 0
+    if client_total and client_total != amount:
+        raise ValueError("상품 가격이나 재고가 바뀌었습니다. 장바구니를 새로고침해 주세요.")
 
-    quantity = 1
-    amount = price * quantity
+    first = lines[0]
+    total_qty = sum(line["qty"] for line in lines)
+    order_name = first["name"] + (f" {first['option']}" if first["option"] else "")
+    if len(lines) > 1:
+        order_name += f" 외 {len(lines) - 1}건"
     order_id = "TJR_" + time.strftime("%Y%m%d%H%M%S") + "_" + uuid.uuid4().hex[:12]
     row = {
         "order_id": order_id,
-        "product_id": str(product["id"]),
-        "product_name": str(product.get("name") or "상품")[:200],
-        "product_type": str(product.get("type") or "")[:30],
-        "unit_price": price,
-        "quantity": quantity,
+        "product_id": first["product_id"],
+        "product_name": order_name[:200],
+        "product_type": first["type"][:30],
+        "unit_price": int(first["unit_price"]),
+        "quantity": total_qty,
         "amount": amount,
         "buyer_name": data["buyer_name"],
         "buyer_phone": data["buyer_phone"],
@@ -660,7 +814,29 @@ def create_order(payload):
         "status": "pending",
         "is_test": TOSS_TEST_MODE,
     }
-    db_client().table("orders").insert(row).execute()
+    client = db_client()
+    client.table("orders").insert(row).execute()
+    try:
+        client.table("order_items").insert([
+            {
+                "order_id": order_id,
+                "product_id": line["product_id"],
+                "product_type": line["type"][:30],
+                "product_name": line["name"][:200],
+                "option_name": line["option"] or None,
+                "unit_price": int(line["unit_price"]),
+                "quantity": int(line["qty"]),
+                "amount": int(line["amount"]),
+            }
+            for line in lines
+        ]).execute()
+    except Exception:
+        client.table("orders").update({
+            "status": "failed",
+            "failure_code": "ITEMS_SAVE_FAILED",
+            "failure_message": "주문 상품 저장에 실패했습니다.",
+        }).eq("order_id", order_id).execute()
+        raise
     return {
         "order_id": order_id,
         "order_name": row["product_name"][:100],
@@ -724,23 +900,44 @@ def _order_row(order_id):
 
 
 def _reserve_bike(order):
-    """중고 바이크는 승인 요청 전에 '판매중 → 예약중'으로 먼저 잡아 중복 판매를 막습니다."""
-    if not _is_bike(order) or order.get("stock_reserved"):
+    """승인 요청 전에 재고를 먼저 잡습니다. 중고 바이크는 '판매중→예약중', 옵션은 재고 차감.
+
+    하나라도 실패하면 이미 잡은 것을 되돌리고 False를 돌려줍니다.
+    """
+    if order.get("stock_reserved"):
         return True
-    if _active_order_exists(order.get("product_id"), exclude_order_id=order.get("order_id")):
+    client = db_client()
+    done = []
+    ok = True
+    for item in order_items(order):
+        pid = item.get("product_id")
+        qty = int(item.get("quantity") or 1)
+        option = item.get("option_name")
+        if _is_bike(item):
+            if _active_order_exists(pid, exclude_order_id=order.get("order_id")):
+                ok = False
+                break
+            claimed = (
+                client.table("products").update({"condition": "예약중"})
+                .eq("id", pid).eq("condition", "판매중").execute().data
+            )
+            if not claimed:
+                ok = False
+                break
+            done.append(("bike", pid, None, 1))
+        elif option:
+            reserved = client.rpc(
+                "reserve_option_stock",
+                {"p_product_id": pid, "p_name": option, "p_qty": qty},
+            ).execute().data
+            if reserved is not True:
+                ok = False
+                break
+            done.append(("option", pid, option, qty))
+    if not ok:
+        _undo_reservations(done)
         return False
-    claimed = (
-        db_client()
-        .table("products")
-        .update({"condition": "예약중"})
-        .eq("id", order.get("product_id"))
-        .eq("condition", "판매중")
-        .execute()
-        .data
-    )
-    if not claimed:
-        return False
-    db_client().table("orders").update({"stock_reserved": True}).eq(
+    client.table("orders").update({"stock_reserved": True}).eq(
         "order_id", order["order_id"]
     ).execute()
     order["stock_reserved"] = True
@@ -748,20 +945,42 @@ def _reserve_bike(order):
     return True
 
 
+def _undo_reservations(done):
+    client = db_client()
+    for kind, pid, option, qty in done:
+        try:
+            if kind == "bike":
+                client.table("products").update({"condition": "판매중"}).eq(
+                    "id", pid
+                ).eq("condition", "예약중").execute()
+            else:
+                client.rpc(
+                    "release_option_stock",
+                    {"p_product_id": pid, "p_name": option, "p_qty": qty},
+                ).execute()
+        except Exception as exc:
+            _log(f"undo reservation failed {pid} {type(exc).__name__}: {exc}")
+    _cache.update(time=0, rows=None)
+
+
 def _release_bike(order):
-    """이 주문이 잡아둔 바이크 예약만 풀어 '판매중'으로 되돌립니다."""
+    """이 주문이 잡아둔 재고(바이크 예약·옵션 재고)만 되돌립니다."""
     if not order.get("stock_reserved"):
         return
-    client = db_client()
-    if not _active_order_exists(order.get("product_id"), exclude_order_id=order.get("order_id")):
-        client.table("products").update({"condition": "판매중"}).eq(
-            "id", order.get("product_id")
-        ).eq("condition", "예약중").execute()
-    client.table("orders").update({"stock_reserved": False}).eq(
+    done = []
+    for item in order_items(order):
+        pid = item.get("product_id")
+        if _is_bike(item):
+            if not _active_order_exists(pid, exclude_order_id=order.get("order_id")):
+                done.append(("bike", pid, None, 1))
+        elif item.get("option_name"):
+            done.append(("option", pid, item.get("option_name"), int(item.get("quantity") or 1)))
+    # 먼저 플래그를 내려 중복 복원을 막습니다.
+    db_client().table("orders").update({"stock_reserved": False}).eq(
         "order_id", order["order_id"]
-    ).execute()
+    ).eq("stock_reserved", True).execute()
     order["stock_reserved"] = False
-    _cache.update(time=0, rows=None)
+    _undo_reservations(done)
 
 
 def _apply_toss_payment(order, result):
@@ -911,11 +1130,11 @@ def confirm_order(payment_key, order_id, redirected_amount):
         db_client().table("orders").update(
             {
                 "status": "failed",
-                "failure_code": "ALREADY_RESERVED",
-                "failure_message": "다른 고객이 먼저 결제한 매물입니다.",
+                "failure_code": "OUT_OF_STOCK",
+                "failure_message": "재고가 부족하거나 다른 고객이 먼저 결제한 상품이 있습니다.",
             }
         ).eq("order_id", order_id).execute()
-        raise ValueError("다른 고객이 먼저 결제한 매물입니다. 결제는 승인되지 않았습니다.")
+        raise ValueError("재고가 부족하거나 다른 고객이 먼저 결제한 상품이 있습니다. 결제는 승인되지 않았습니다.")
 
     status_code, result = _toss_post(
         "/v1/payments/confirm",
@@ -1092,151 +1311,272 @@ def cancel_order(order_id, reason):
         raise RuntimeError(str(result.get("message") or "결제 취소에 실패했습니다."))
 
     _apply_toss_payment(order, result)
-    if order.get("status") == "canceled" and _is_bike(order) and not order.get("stock_reserved"):
-        # 이전 버전으로 결제된 주문(예약 표시 없음)도 바이크 예약을 풀어 줍니다.
-        order["stock_reserved"] = True
-        _release_bike(order)
     return result
 
 
-def checkout_page(product):
-    name = str(product.get("name") or "상품")
-    brand = str(product.get("brand") or "")
-    amount = int(product.get("price") or 0)
-    product_id = str(product.get("id") or "")
-    pics = product.get("images") or [product.get("image")]
-    hero = next(
-        (u for u in pics if isinstance(u, str) and u.startswith(("http://", "https://"))),
-        "",
-    )
+SHOP_CSS = """
+*{box-sizing:border-box}body{margin:0;background:#080808;color:#eee;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+a{color:#ff8a24;text-decoration:none}.wrap{max-width:980px;margin:0 auto;padding:24px 18px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:12px}
+.logo{font-size:26px;font-weight:900;color:#ff6900}.panel{background:#111;border:1px solid #2a2a2a;padding:20px;border-radius:6px}
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:24px}
+.line{display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #222}
+.line img{width:72px;height:72px;object-fit:cover;background:#1a1a1a;border-radius:4px}
+.line .nm{font-weight:700}.line .op{color:#aaa;font-size:13px}.line .er{color:#ff7a7a;font-size:13px;margin-top:4px}
+.qty{display:inline-flex;align-items:center;border:1px solid #333;border-radius:4px;overflow:hidden}
+.qty button{width:30px;height:30px;border:0;background:#1b1b1b;color:#fff;cursor:pointer;font-size:16px;padding:0;margin:0}
+.qty span{min-width:34px;text-align:center}.rm{background:none;border:0;color:#999;cursor:pointer;font-size:13px;margin-top:6px;padding:0}
+.price{font-weight:800;text-align:right;white-space:nowrap}.total{display:flex;justify-content:space-between;font-size:20px;font-weight:900;margin:18px 0}
+.btn{display:block;width:100%;border:0;background:#ff6900;color:#fff;font-size:17px;font-weight:900;padding:15px;margin-top:12px;cursor:pointer;border-radius:4px;text-align:center}
+.btn.sub{background:#222;border:1px solid #444}.btn:disabled{opacity:.45;cursor:not-allowed}
+label{display:block;margin:12px 0 6px;color:#bbb}input{width:100%;padding:13px;background:#0b0b0b;border:1px solid #3a3a3a;color:#fff;border-radius:4px}
+.addr-row{display:grid;grid-template-columns:130px 1fr;gap:8px}.small{font-size:13px;color:#aaa;line-height:1.6}
+.agree{display:flex;gap:8px;align-items:flex-start;margin:18px 0}.agree input{width:auto;margin-top:4px}
+#msg{min-height:24px;margin-top:10px;color:#ffb36b}.test-banner{background:#2b190b;border:1px solid #7d491c;padding:12px;margin-bottom:18px;border-radius:4px}
+#payment-method,#agreement{background:white;border-radius:6px;margin-top:16px}.empty{padding:40px 0;text-align:center;color:#aaa}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.addr-row{grid-template-columns:1fr}}
+"""
+
+SHOP_JS = r"""
+const CART_KEY = "twoj_cart_v1";
+const BUY_KEY = "twoj_buynow_v1";
+function readList(storage, key){
+  try { const v = JSON.parse(storage.getItem(key) || "[]"); return Array.isArray(v) ? v : []; }
+  catch(e){ return []; }
+}
+function writeList(storage, key, list){ storage.setItem(key, JSON.stringify(list.slice(0, 20))); }
+function getCart(){ return readList(localStorage, CART_KEY); }
+function setCart(list){ writeList(localStorage, CART_KEY, list); }
+function won(n){ return Number(n || 0).toLocaleString("ko-KR") + "원"; }
+function esc(t){ const d = document.createElement("div"); d.textContent = t == null ? "" : String(t); return d.innerHTML; }
+async function quote(items){
+  const r = await fetch("/api/cart/quote?items=" + encodeURIComponent(JSON.stringify(items)), {cache:"no-store"});
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.message || "상품 정보를 불러오지 못했습니다.");
+  return body;
+}
+"""
+
+
+def _shop_shell(title, body, script="", head_extra=""):
     mode_badge = (
-        '<div class="test-banner"><b>TEST 결제</b> · 실제 금액은 청구되지 않습니다. 실제 고객 주문에는 사용하지 마세요.</div>'
-        if TOSS_TEST_MODE
-        else ""
+        '<div class="test-banner"><b>TEST 결제</b> · 실제 금액은 청구되지 않습니다.</div>'
+        if TOSS_TEST_MODE else ""
     )
-    client_key_js = json.dumps(TOSS_CLIENT_KEY)
-    product_id_js = json.dumps(product_id)
-    amount_js = json.dumps(amount)
-    name_js = json.dumps(name)
-    image_html = image(hero, name) if hero else ""
     return f'''<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{esc(name)} 결제 | TWO J ROAD</title>
-<script src="https://js.tosspayments.com/v2/standard"></script>
-<style>
-*{{box-sizing:border-box}}body{{margin:0;background:#080808;color:#eee;font-family:Arial,sans-serif}}
-.wrap{{max-width:920px;margin:0 auto;padding:24px 18px 60px}}
-.top{{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}}
-.logo{{font-size:28px;font-weight:900;color:#ff6900}}a{{color:#ff8a24;text-decoration:none}}
-.grid{{display:grid;grid-template-columns:1fr 1.15fr;gap:24px}}.panel{{background:#111;border:1px solid #2a2a2a;padding:20px}}
-.product img{{width:100%;height:300px;object-fit:contain;background:#090909}}
-.price{{font-size:28px;font-weight:900;margin:8px 0 18px}}label{{display:block;margin:12px 0 6px;color:#bbb}}
-input{{width:100%;padding:13px;background:#0b0b0b;border:1px solid #3a3a3a;color:#fff;border-radius:4px}}
-.addr-row{{display:grid;grid-template-columns:130px 1fr;gap:8px}}
-button{{width:100%;border:0;background:#ff6900;color:#fff;font-size:17px;font-weight:900;padding:15px;margin-top:18px;cursor:pointer;border-radius:4px}}
-button:disabled{{opacity:.45;cursor:not-allowed}}.test-banner{{background:#2b190b;border:1px solid #7d491c;padding:12px;margin-bottom:18px}}
-.small{{font-size:13px;color:#aaa;line-height:1.6}}.agree{{display:flex;gap:8px;align-items:flex-start;margin:18px 0}}
-.agree input{{width:auto;margin-top:4px}}#msg{{min-height:24px;margin-top:10px;color:#ffb36b}}
-#payment-method,#agreement{{background:white;border-radius:6px;margin-top:16px}}
-@media(max-width:760px){{.grid{{grid-template-columns:1fr}}.product img{{height:220px}}}}
-</style></head><body><div class="wrap">
-<div class="top"><div class="logo">TWO J ROAD</div><a href="/?page=detail&id={esc(product_id, quote=True)}">상품으로 돌아가기</a></div>
-{mode_badge}
-<div class="grid">
-<section class="panel product">
-{image_html}
-<div class="small">{esc(brand)}</div><h1>{esc(name)}</h1>
-<div class="price">{amount:,}원</div>
-<div class="small">현재 결제 연동 단계에서는 1회 주문 수량이 1개로 고정됩니다.</div>
-</section>
-<section class="panel">
-<h2>주문 정보</h2>
+<meta name="robots" content="noindex">
+<title>{esc(title)} | TWO J ROAD</title>{head_extra}
+<style>{SHOP_CSS}</style></head><body><div class="wrap">
+<div class="top"><a class="logo" href="/">TWO J ROAD</a><a href="/">쇼핑 계속하기</a></div>
+{mode_badge}{body}</div>
+<script>{SHOP_JS}</script><script>{script}</script></body></html>'''
+
+
+def cart_add_page():
+    """팝업의 '장바구니/구매하기' 링크가 도착하는 곳. 브라우저에 담고 다음 화면으로 이동합니다."""
+    script = r"""
+(function(){
+  const q = new URLSearchParams(location.search);
+  const pid = (q.get("product") || "").slice(0, 64);
+  let items = [];
+  try { items = JSON.parse(q.get("items") || "[]"); } catch(e) { items = []; }
+  if (!Array.isArray(items) || !items.length) items = [{o: q.get("option") || "", q: Number(q.get("qty") || 1)}];
+  const picked = items
+    .map(i => ({product_id: pid, option: String(i.o || "").slice(0, 60), qty: Math.max(0, Math.min(20, parseInt(i.q, 10) || 0))}))
+    .filter(i => i.product_id && i.qty > 0);
+  if (!picked.length) { location.replace("/?page=detail&id=" + encodeURIComponent(pid)); return; }
+  if (q.get("next") === "buy") {
+    writeList(sessionStorage, BUY_KEY, picked);
+    location.replace("/checkout?mode=buy");
+    return;
+  }
+  const cart = getCart();
+  for (const it of picked) {
+    const found = cart.find(c => c.product_id === it.product_id && (c.option || "") === it.option);
+    if (found) found.qty = Math.min(20, (parseInt(found.qty, 10) || 0) + it.qty);
+    else cart.push(it);
+  }
+  setCart(cart);
+  location.replace("/cart");
+})();
+"""
+    return _shop_shell("장바구니 담는 중", '<p class="empty">장바구니에 담는 중입니다…</p>', script)
+
+
+def cart_page():
+    body = '''<h1>장바구니</h1>
+<div class="panel"><div id="lines"><p class="empty">불러오는 중…</p></div>
+<div class="total"><span>총 결제금액</span><span id="total">0원</span></div>
+<div id="msg"></div>
+<button class="btn" id="order" disabled>주문하기</button>
+<a class="btn sub" href="/">쇼핑 계속하기</a></div>'''
+    script = r"""
+async function render(){
+  const cart = getCart();
+  const box = document.getElementById("lines");
+  const btn = document.getElementById("order");
+  if (!cart.length) {
+    box.innerHTML = '<p class="empty">장바구니가 비어 있습니다.</p>';
+    document.getElementById("total").textContent = "0원";
+    btn.disabled = true; return;
+  }
+  let data;
+  try { data = await quote(cart); }
+  catch(e) { document.getElementById("msg").textContent = e.message; return; }
+  box.innerHTML = data.lines.map((l, i) => `
+    <div class="line">
+      ${l.image ? `<img src="${esc(l.image)}" alt="">` : '<img alt="">'}
+      <div>
+        <div class="nm">${esc(l.name || "판매 종료 상품")}</div>
+        ${l.option ? `<div class="op">옵션: ${esc(l.option)}</div>` : ""}
+        <div class="qty"><button data-i="${i}" data-d="-1" aria-label="수량 빼기">−</button><span>${l.qty}</span><button data-i="${i}" data-d="1" aria-label="수량 더하기">+</button></div>
+        ${l.error ? `<div class="er">${esc(l.error)}</div>` : ""}
+        <div><button class="rm" data-rm="${i}">삭제</button></div>
+      </div>
+      <div class="price">${l.ok ? won(l.amount) : "-"}</div>
+    </div>`).join("");
+  document.getElementById("total").textContent = won(data.total);
+  document.getElementById("msg").textContent = data.ok ? "" : "구매할 수 없는 상품을 삭제하거나 수량을 조정해 주세요.";
+  btn.disabled = !data.ok || data.total <= 0;
+  box.querySelectorAll("button[data-d]").forEach(b => b.onclick = () => {
+    const list = getCart(); const i = +b.dataset.i;
+    const max = (data.lines[i] && data.lines[i].max_qty) || 20;
+    list[i].qty = Math.max(1, Math.min(max, (parseInt(list[i].qty, 10) || 1) + (+b.dataset.d)));
+    setCart(list); render();
+  });
+  box.querySelectorAll("button[data-rm]").forEach(b => b.onclick = () => {
+    const list = getCart(); list.splice(+b.dataset.rm, 1); setCart(list); render();
+  });
+}
+document.getElementById("order").onclick = () => { location.href = "/checkout?mode=cart"; };
+render();
+"""
+    return _shop_shell("장바구니", body, script)
+
+
+def checkout_page():
+    body = f'''<div class="grid">
+<section class="panel"><h2>주문 상품</h2><div id="lines"><p class="empty">불러오는 중…</p></div>
+<div class="total"><span>총 결제금액</span><span id="total">0원</span></div>
+<div class="small">배송·교환·환불 관련 문의는 매장으로 연락해 주세요.</div></section>
+<section class="panel"><h2>주문 정보</h2>
 <label for="buyer_name">주문자명</label><input id="buyer_name" maxlength="50" autocomplete="name">
 <label for="buyer_phone">휴대폰</label><input id="buyer_phone" inputmode="tel" placeholder="01012345678" autocomplete="tel">
 <label for="buyer_email">이메일 (선택)</label><input id="buyer_email" type="email" maxlength="120" autocomplete="email">
 <label>배송지</label>
-<div class="addr-row"><input id="postal_code" maxlength="20" placeholder="우편번호"><input id="address1" maxlength="200" placeholder="기본 주소"></div>
-<input id="address2" maxlength="200" placeholder="상세 주소" style="margin-top:8px">
+<div class="addr-row"><input id="postal_code" maxlength="20" placeholder="우편번호" autocomplete="postal-code"><input id="address1" maxlength="200" placeholder="기본 주소" autocomplete="address-line1"></div>
+<input id="address2" maxlength="200" placeholder="상세 주소" style="margin-top:8px" autocomplete="address-line2">
 <div class="agree"><input id="privacy" type="checkbox"><label for="privacy" style="margin:0">
 주문·결제·배송·환불 처리를 위한 개인정보 수집 및 이용에 동의합니다.
 <span class="small">주문 처리에 필요한 최소 정보만 저장합니다.</span></label></div>
-<div id="payment-method"></div>
-<div id="agreement"></div>
-<button id="payment-button" disabled>{"테스트 결제하기" if TOSS_TEST_MODE else "결제하기"}</button>
-<div id="msg"></div>
-</section></div></div>
-<script>
-const PRODUCT_ID = {product_id_js};
-const PRODUCT_NAME = {name_js};
-const AMOUNT = {amount_js};
-const CLIENT_KEY = {client_key_js};
-function value(id) {{ return document.getElementById(id).value.trim(); }}
-function message(text) {{ document.getElementById("msg").textContent = text || ""; }}
-async function main() {{
+<div id="payment-method"></div><div id="agreement"></div>
+<button class="btn" id="payment-button" disabled>{"테스트 결제하기" if TOSS_TEST_MODE else "결제하기"}</button>
+<div id="msg"></div></section></div>'''
+    script = r"""
+const CLIENT_KEY = __CLIENT_KEY__;
+const MODE = new URLSearchParams(location.search).get("mode") === "buy" ? "buy" : "cart";
+function items(){ return MODE === "buy" ? readList(sessionStorage, BUY_KEY) : getCart(); }
+function value(id){ return document.getElementById(id).value.trim(); }
+function message(t){ document.getElementById("msg").textContent = t || ""; }
+async function main(){
+  const list = items();
+  const box = document.getElementById("lines");
+  if (!list.length) { box.innerHTML = '<p class="empty">주문할 상품이 없습니다. <a href="/">쇼핑하러 가기</a></p>'; return; }
+  let data;
+  try { data = await quote(list); } catch(e) { message(e.message); return; }
+  box.innerHTML = data.lines.map(l => `
+    <div class="line">
+      ${l.image ? `<img src="${esc(l.image)}" alt="">` : '<img alt="">'}
+      <div><div class="nm">${esc(l.name || "판매 종료 상품")}</div>
+      ${l.option ? `<div class="op">옵션: ${esc(l.option)}</div>` : ""}
+      <div class="op">수량 ${l.qty}개</div>
+      ${l.error ? `<div class="er">${esc(l.error)}</div>` : ""}</div>
+      <div class="price">${l.ok ? won(l.amount) : "-"}</div>
+    </div>`).join("");
+  document.getElementById("total").textContent = won(data.total);
+  if (!data.ok) {
+    message("구매할 수 없는 상품이 있습니다. " + (MODE === "cart" ? "장바구니에서 정리해 주세요." : "상품을 다시 선택해 주세요."));
+    return;
+  }
   const button = document.getElementById("payment-button");
-  try {{
+  try {
     const tossPayments = TossPayments(CLIENT_KEY);
-    const widgets = tossPayments.widgets({{customerKey: TossPayments.ANONYMOUS}});
-    await widgets.setAmount({{currency:"KRW", value:AMOUNT}});
+    const widgets = tossPayments.widgets({customerKey: TossPayments.ANONYMOUS});
+    await widgets.setAmount({currency: "KRW", value: data.total});
     await Promise.all([
-      widgets.renderPaymentMethods({{selector:"#payment-method", variantKey:"DEFAULT"}}),
-      widgets.renderAgreement({{selector:"#agreement", variantKey:"AGREEMENT"}}),
+      widgets.renderPaymentMethods({selector: "#payment-method", variantKey: "DEFAULT"}),
+      widgets.renderAgreement({selector: "#agreement", variantKey: "AGREEMENT"}),
     ]);
     button.disabled = false;
-    button.addEventListener("click", async () => {{
-      if (!document.getElementById("privacy").checked) {{
-        message("개인정보 수집 동의가 필요합니다.");
-        return;
-      }}
+    button.addEventListener("click", async () => {
+      if (!document.getElementById("privacy").checked) { message("개인정보 수집 동의가 필요합니다."); return; }
       button.disabled = true;
       message("주문 정보를 확인하고 있습니다.");
-      try {{
-        const response = await fetch("/api/orders/create", {{
-          method:"POST",
-          headers:{{"Content-Type":"application/json"}},
-          body:JSON.stringify({{
-            product_id:PRODUCT_ID,
-            buyer_name:value("buyer_name"),
-            buyer_phone:value("buyer_phone"),
-            buyer_email:value("buyer_email"),
-            postal_code:value("postal_code"),
-            address1:value("address1"),
-            address2:value("address2"),
-            privacy_agreed:true
-          }})
-        }});
+      try {
+        const response = await fetch("/api/orders/create", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            items: list,
+            expected_amount: data.total,
+            buyer_name: value("buyer_name"),
+            buyer_phone: value("buyer_phone"),
+            buyer_email: value("buyer_email"),
+            postal_code: value("postal_code"),
+            address1: value("address1"),
+            address2: value("address2"),
+            privacy_agreed: true
+          })
+        });
         const order = await response.json();
         if (!response.ok) throw new Error(order.message || "주문 생성에 실패했습니다.");
-        if (Number(order.amount) !== AMOUNT) {{
-          throw new Error("상품 금액이 변경되었습니다. 페이지를 새로고침해 주세요.");
-        }}
+        if (Number(order.amount) !== Number(data.total)) throw new Error("상품 금액이 변경되었습니다. 페이지를 새로고침해 주세요.");
+        localStorage.setItem("twoj_last_checkout", JSON.stringify({mode: MODE, order_id: order.order_id}));
         message("");
-        await widgets.requestPayment({{
+        await widgets.requestPayment({
           orderId: order.order_id,
-          orderName: order.order_name || PRODUCT_NAME,
-          successUrl: window.location.origin + "/payment/success",
-          failUrl: window.location.origin + "/payment/fail",
+          orderName: order.order_name,
+          successUrl: location.origin + "/payment/success",
+          failUrl: location.origin + "/payment/fail",
           customerName: order.buyer_name,
           customerEmail: order.buyer_email || undefined,
           customerMobilePhone: order.buyer_phone
-        }});
-      }} catch (error) {{
+        });
+      } catch (error) {
         console.error(error);
         message(error && error.message ? error.message : "결제를 시작하지 못했습니다.");
         button.disabled = false;
-      }}
-    }});
-  }} catch (error) {{
+      }
+    });
+  } catch (error) {
     console.error(error);
     message("결제 모듈을 불러오지 못했습니다.");
-  }}
-}}
+  }
+}
 main();
-</script></body></html>'''
+""".replace("__CLIENT_KEY__", json.dumps(TOSS_CLIENT_KEY))
+    return _shop_shell(
+        "주문·결제", body, script,
+        head_extra='<script src="https://js.tosspayments.com/v2/standard"></script>',
+    )
 
 
-def payment_result_page(title, message, ok=True, details=""):
+CLEAR_CART_SCRIPT = r"""<script>
+try {
+  const last = JSON.parse(localStorage.getItem("twoj_last_checkout") || "null");
+  const oid = new URLSearchParams(location.search).get("orderId");
+  if (last && last.order_id === oid) {
+    if (last.mode === "cart") localStorage.removeItem("twoj_cart_v1");
+    else sessionStorage.removeItem("twoj_buynow_v1");
+    localStorage.removeItem("twoj_last_checkout");
+  }
+} catch (e) {}
+</script>"""
+
+
+def payment_result_page(title, message, ok=True, details="", script=""):
     tone = "#17351f" if ok else "#3a1717"
     border = "#2e7542" if ok else "#8d3333"
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -1249,7 +1589,7 @@ small{{color:#aaa}}</style></head><body><div class="box"><h1>{esc(title)}</h1>
 <div class="result">{esc(message)}</div>{details}
 <p><a href="/">TWO J ROAD 홈으로</a></p>
 <small>{"테스트 결제 모드 · 실제 청구 없음" if TOSS_TEST_MODE else STORE_NAME}</small>
-</div></body></html>'''
+</div>{script}</body></html>'''
 
 
 def _request_ip(request):
@@ -1334,31 +1674,60 @@ def main():
             # 검색로봇의 HEAD 요청에도 405 대신 정상 응답 (본문은 Tornado가 생략)
             await self.get(kind, ident)
 
+    def _payment_off(handler):
+        handler.set_status(503)
+        handler.set_header("Content-Type", "text/html; charset=utf-8")
+        handler.finish(payment_result_page(
+            "결제 일시 중지",
+            "현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.",
+            False,
+        ))
+
     class Checkout(tornado.web.RequestHandler):
-        async def get(self, product_id):
+        """예전 단일상품 결제 주소 → 바로구매 흐름으로 연결"""
+        def get(self, product_id):
+            self.set_header("Cache-Control", "no-store")
+            self.redirect(
+                "/cart/add?" + urlencode({"product": product_id, "qty": 1, "next": "buy"}),
+                permanent=False,
+            )
+
+    class ShopPage(tornado.web.RequestHandler):
+        def get(self):
             self.set_header("Cache-Control", "no-store")
             self.set_header("X-Robots-Tag", "noindex")
             if not PAYMENT_ENABLED:
-                self.set_status(503)
-                self.set_header("Content-Type", "text/html; charset=utf-8")
-                self.finish(payment_result_page(
-                    "결제 일시 중지",
-                    "현재 온라인 결제를 사용할 수 없습니다. 매장으로 문의해 주세요.",
-                    False,
-                ))
+                _payment_off(self)
+                return
+            self.set_header("Content-Type", "text/html; charset=utf-8")
+            path = self.request.path.rstrip("/")
+            if path == "/cart/add":
+                self.finish(cart_add_page())
+            elif path == "/cart":
+                self.finish(cart_page())
+            else:
+                self.finish(checkout_page())
+
+    class CartQuote(tornado.web.RequestHandler):
+        async def get(self):
+            self.set_header("Cache-Control", "no-store")
+            self.set_header("Content-Type", "application/json; charset=utf-8")
+            raw = self.get_query_argument("items", default="[]")
+            if len(raw) > 8000:
+                self.set_status(413)
+                self.finish(json.dumps({"message": "요청 데이터가 너무 큽니다."}, ensure_ascii=False))
                 return
             try:
-                product = await asyncio.to_thread(product_by_id, product_id)
-            except Exception:
-                product = None
-            if (
-                product is None
-                or str(product.get("condition") or "") != "판매중"
-                or int(product.get("price") or 0) <= 0
-            ):
-                raise tornado.web.HTTPError(404)
-            self.set_header("Content-Type", "text/html; charset=utf-8")
-            self.finish(checkout_page(product))
+                items = json.loads(raw)
+                result = await asyncio.to_thread(quote_items, items, False)
+                self.finish(json.dumps(result, ensure_ascii=False))
+            except ValueError as exc:
+                self.set_status(400)
+                self.finish(json.dumps({"message": str(exc)}, ensure_ascii=False))
+            except Exception as exc:
+                _log(f"quote error {type(exc).__name__}: {exc}")
+                self.set_status(500)
+                self.finish(json.dumps({"message": "상품 정보를 불러오지 못했습니다."}, ensure_ascii=False))
 
     class CreateOrder(tornado.web.RequestHandler):
         def options(self):
@@ -1430,7 +1799,7 @@ def main():
                     if result.get("status") == "awaiting_deposit"
                     else "결제가 정상적으로 승인되었습니다."
                 )
-                self.finish(payment_result_page("결제 완료", status_message, True, details))
+                self.finish(payment_result_page("결제 완료", status_message, True, details, CLEAR_CART_SCRIPT))
             except (ValueError, RuntimeError) as exc:
                 self.finish(
                     payment_result_page(
@@ -1503,6 +1872,24 @@ def main():
         timer.start()
         _log("reconcile timer started")
 
+    from tornado.web import OutputTransform
+
+    class VisitorCookie(OutputTransform):
+        """찜 기능용 익명 방문자 ID 쿠키(개인정보 없음)를 처음 방문 시 발급합니다."""
+        def __init__(self, request):
+            super().__init__(request)
+            cookie = request.headers.get("Cookie", "")
+            self._needs = VISITOR_COOKIE + "=" not in cookie and request.method == "GET"
+
+        def transform_first_chunk(self, status_code, headers, chunk, finishing):
+            if self._needs and status_code < 400 and "text/html" in str(headers.get("Content-Type", "")):
+                headers.add(
+                    "Set-Cookie",
+                    f"{VISITOR_COOKIE}={uuid.uuid4().hex}; Path=/; Max-Age=31536000; "
+                    "HttpOnly; Secure; SameSite=Lax",
+                )
+            return super().transform_first_chunk(status_code, headers, chunk, finishing)
+
     original = Server._create_app
 
     def create_app(server):
@@ -1516,12 +1903,20 @@ def main():
                 (r"/catalog/([^/]+)/([^/]+)", Public),
                 (r"/products/([^/]+)", Public),
                 (r"/checkout/([^/]+)", Checkout),
+                (r"/checkout/?", ShopPage),
+                (r"/cart/?", ShopPage),
+                (r"/cart/add", ShopPage),
+                (r"/api/cart/quote", CartQuote),
                 (r"/api/orders/create", CreateOrder),
                 (r"/payment/success", PaymentSuccess),
                 (r"/payment/fail", PaymentFail),
                 (r"/api/toss/webhook", TossWebhook),
             ],
         )
+        try:
+            application.add_transform(VisitorCookie)
+        except Exception as exc:
+            _log(f"visitor cookie not installed {type(exc).__name__}: {exc}")
         try:
             _start_reconcile()
         except Exception as exc:
