@@ -1340,7 +1340,9 @@ def cancel_order(order_id, reason):
 
 
 SHOP_CSS = """
-*{box-sizing:border-box}body{margin:0;background:#080808;color:#eee;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:#080808;color:#eee;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;overflow-x:hidden}
+img,iframe{max-width:100%}
 a{color:#ff8a24;text-decoration:none}.wrap{max-width:980px;margin:0 auto;padding:24px 18px 60px}
 .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:12px}
 .logo{font-size:26px;font-weight:900;color:#ff6900}.panel{background:#111;border:1px solid #2a2a2a;padding:20px;border-radius:6px}
@@ -1354,11 +1356,12 @@ a{color:#ff8a24;text-decoration:none}.wrap{max-width:980px;margin:0 auto;padding
 .price{font-weight:800;text-align:right;white-space:nowrap}.total{display:flex;justify-content:space-between;font-size:20px;font-weight:900;margin:18px 0}
 .btn{display:block;width:100%;border:0;background:#ff6900;color:#fff;font-size:17px;font-weight:900;padding:15px;margin-top:12px;cursor:pointer;border-radius:4px;text-align:center}
 .btn.sub{background:#222;border:1px solid #444}.btn:disabled{opacity:.45;cursor:not-allowed}
-label{display:block;margin:12px 0 6px;color:#bbb}input{width:100%;padding:13px;background:#0b0b0b;border:1px solid #3a3a3a;color:#fff;border-radius:4px}
+label{display:block;margin:12px 0 6px;color:#bbb}input,select,textarea{width:100%;padding:13px;background:#0b0b0b;border:1px solid #3a3a3a;color:#fff;border-radius:4px;font-size:16px}
 .addr-row{display:grid;grid-template-columns:130px 1fr;gap:8px}.small{font-size:13px;color:#aaa;line-height:1.6}
 .agree{display:flex;gap:8px;align-items:flex-start;margin:18px 0}.agree input{width:auto;margin-top:4px}
 #msg{min-height:24px;margin-top:10px;color:#ffb36b}.test-banner{background:#2b190b;border:1px solid #7d491c;padding:12px;margin-bottom:18px;border-radius:4px}
-#payment-method,#agreement{background:white;border-radius:6px;margin-top:16px}.empty{padding:40px 0;text-align:center;color:#aaa}
+#payment-method,#agreement{background:white;border-radius:6px;margin-top:16px;overflow:hidden;min-height:60px}
+.panel,.grid>section{min-width:0}.empty{padding:40px 0;text-align:center;color:#aaa}
 @media(max-width:760px){.grid{grid-template-columns:1fr}.addr-row{grid-template-columns:1fr}}
 """
 
