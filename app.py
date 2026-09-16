@@ -2400,6 +2400,92 @@ def render_feedback_admin():
                     st.rerun()
 
 
+MAX_PRODUCT_IMAGES = 20
+
+
+def _thumb_data_uri(data, cache_key):
+    cache = st.session_state.setdefault("_img_thumb_cache", {})
+    if cache_key in cache:
+        return cache[cache_key]
+    try:
+        from io import BytesIO
+        from PIL import Image as _PILImage, ImageOps as _PILImageOps
+        with _PILImage.open(BytesIO(data)) as im:
+            im = _PILImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((320, 320))
+            buf = BytesIO()
+            im.save(buf, "JPEG", quality=78)
+        uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        uri = ""
+    if len(cache) > 200:
+        cache.clear()
+    cache[cache_key] = uri
+    return uri
+
+
+def uploaded_image_entries(files):
+    entries = []
+    for f in files or []:
+        file_id = str(getattr(f, "file_id", "") or f"{f.name}-{f.size}")
+        entries.append({"id": "up:" + file_id, "src": _thumb_data_uri(f.getvalue(), file_id), "file": f})
+    return entries
+
+
+def render_image_order_editor(key, entries, allow_remove=False):
+    """사진 미리보기 + 순서 변경(◀ ▶ ★) + 삭제(✕). 정렬된 항목 목록을 돌려줍니다."""
+    by_id = {e["id"]: e for e in entries}
+    state = st.session_state.get(key) or {"order": [], "removed": []}
+    removed = [i for i in state["removed"] if i in by_id]
+    order = [i for i in state["order"] if i in by_id and i not in removed]
+    order += [e["id"] for e in entries if e["id"] not in order and e["id"] not in removed]
+    st.session_state[key] = {"order": order, "removed": removed}
+    if not order:
+        return []
+
+    st.caption("첫 번째 사진이 대표 사진입니다. ◀ ▶ 로 순서를 바꾸고, ★ 를 누르면 맨 앞으로 옮깁니다.")
+    per_row = 5
+    action = None
+    for row_start in range(0, len(order), per_row):
+        cols = st.columns(per_row)
+        for offset, item_id in enumerate(order[row_start:row_start + per_row]):
+            idx = row_start + offset
+            item = by_id[item_id]
+            with cols[offset]:
+                border = "#ff6900" if idx == 0 else "#333"
+                src = item.get("src") or ""
+                img = (f'<img src="{escape(src, quote=True)}" alt="사진 {idx + 1}" '
+                       f'style="width:100%;aspect-ratio:1;object-fit:cover;display:block">') if src else (
+                       '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;'
+                       'color:#888;font-size:12px">미리보기 없음</div>')
+                safe_markdown(
+                    f'<div style="border:2px solid {border};border-radius:6px;overflow:hidden;background:#111">'
+                    f'{img}<div style="font-size:12px;padding:3px 6px;background:#161616">'
+                    f'{idx + 1}{" · 대표" if idx == 0 else ""}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                buttons = st.columns(4 if allow_remove else 3, gap="small")
+                if buttons[0].button("◀", key=f"{key}_l_{item_id}", disabled=idx == 0, help="앞으로"):
+                    action = ("move", idx, idx - 1)
+                if buttons[1].button("▶", key=f"{key}_r_{item_id}", disabled=idx == len(order) - 1, help="뒤로"):
+                    action = ("move", idx, idx + 1)
+                if buttons[2].button("★", key=f"{key}_f_{item_id}", disabled=idx == 0, help="대표 사진으로"):
+                    action = ("first", idx, 0)
+                if allow_remove and buttons[3].button("✕", key=f"{key}_x_{item_id}", help="이 사진 빼기"):
+                    action = ("remove", idx, None)
+    if action:
+        kind, a, b = action
+        if kind == "move":
+            order[a], order[b] = order[b], order[a]
+        elif kind == "first":
+            order.insert(0, order.pop(a))
+        elif kind == "remove":
+            removed.append(order.pop(a))
+        st.session_state[key] = {"order": order, "removed": removed}
+        st.rerun()
+    return [by_id[i] for i in order]
+
+
 # =========================================================
 # ADMIN LOGIN
 # =========================================================
@@ -2537,8 +2623,9 @@ def render_add_product():
             key="add_condition"
         )
 
+        add_ver = st.session_state.get("add_upload_ver", 0)
         uploaded_images = st.file_uploader(
-            "상품 사진 직접 업로드",
+            "상품 사진 직접 업로드 (여러 장 한 번에 선택 가능)",
             type=[
                 "jpg",
                 "jpeg",
@@ -2546,9 +2633,16 @@ def render_add_product():
                 "webp",
             ],
             accept_multiple_files=True,
-            help="최대 8장까지 등록할 수 있습니다.",
-            key="add_uploaded_images"
+            help=f"최대 {MAX_PRODUCT_IMAGES}장까지 등록할 수 있습니다.",
+            key=f"add_uploaded_images_{add_ver}"
         )
+
+        add_image_entries = render_image_order_editor(
+            f"add_img_order_{add_ver}",
+            uploaded_image_entries(uploaded_images),
+            allow_remove=True,
+        )
+        uploaded_images = [e["file"] for e in add_image_entries]
 
         image = st.text_input(
             "또는 대표 이미지 URL",
@@ -2635,9 +2729,9 @@ def render_add_product():
             )
             return
 
-        if len(uploaded_images or []) > 8:
+        if len(uploaded_images or []) > MAX_PRODUCT_IMAGES:
             st.error(
-                "상품 사진은 최대 8장까지 등록할 수 있습니다."
+                f"상품 사진은 최대 {MAX_PRODUCT_IMAGES}장까지 등록할 수 있습니다."
             )
             return
 
@@ -2730,6 +2824,8 @@ def render_add_product():
         st.session_state["product_action_notice"] = (
             f"상품 등록 완료 · {new_product['name']}" + option_notice
         )
+        st.session_state.pop(f"add_img_order_{add_ver}", None)
+        st.session_state["add_upload_ver"] = add_ver + 1
 
         st.rerun()
 
@@ -2910,13 +3006,10 @@ def render_manage_products():
         product
     )
 
-    if current_images:
-        st.caption(
-            f"현재 등록 사진: {len(current_images)}장"
-        )
-
-    replacement_images = st.file_uploader(
-        "새 사진으로 전체 교체",
+    edit_ver = st.session_state.get(f"edit_upload_ver_{selected_id}", 0)
+    st.markdown("**상품 사진**")
+    added_images = st.file_uploader(
+        "사진 추가 (여러 장 한 번에 선택 가능)",
         type=[
             "jpg",
             "jpeg",
@@ -2924,18 +3017,25 @@ def render_manage_products():
             "webp",
         ],
         accept_multiple_files=True,
-        help="새 사진을 선택하면 기존 사진 전체가 교체됩니다.",
-        key=f"edit_uploaded_images_{selected_id}"
+        help=f"추가한 사진은 뒤에 붙습니다. 전체 최대 {MAX_PRODUCT_IMAGES}장.",
+        key=f"edit_uploaded_images_{selected_id}_{edit_ver}"
     )
+    edit_image_entries = render_image_order_editor(
+        f"edit_img_order_{selected_id}_{edit_ver}",
+        [
+            {"id": f"cur:{i}:{v}", "src": image_src(v), "url": v}
+            for i, v in enumerate(current_images)
+        ] + uploaded_image_entries(added_images),
+        allow_remove=True,
+    )
+    if current_images and not edit_image_entries:
+        st.warning("사진을 모두 뺐습니다. 저장하려면 사진을 1장 이상 남기거나 추가해 주세요.")
 
     edit_image = st.text_input(
-        "또는 대표 이미지 URL",
-        value=(
-            str(current_images[0])
-            if current_images
-            else ""
-        ),
-        key=f"edit_image_{selected_id}"
+        "이미지 URL로 추가 (선택)",
+        value="",
+        placeholder="https://...",
+        key=f"edit_image_{selected_id}_{edit_ver}"
     )
 
     current_detail_text, current_detail_files = unpack_detail(product.get("description", ""))
@@ -3046,46 +3146,41 @@ def render_manage_products():
             product["condition"] = edit_condition
             product["badge"] = edit_badge
 
-            if replacement_images:
-                if len(replacement_images) > 8:
-                    st.error(
-                        "상품 사진은 최대 8장까지 등록할 수 있습니다."
-                    )
+            final_entries = list(edit_image_entries)
+            if edit_image.strip():
+                final_entries.append({"id": "url:new", "url": edit_image.strip()})
+            if not final_entries:
+                st.error("상품 사진을 1장 이상 남기거나 추가해 주세요.")
+                return
+            if len(final_entries) > MAX_PRODUCT_IMAGES:
+                st.error(f"상품 사진은 최대 {MAX_PRODUCT_IMAGES}장까지 등록할 수 있습니다.")
+                return
+
+            new_files = [e["file"] for e in final_entries if e.get("file") is not None]
+            saved_new = []
+            if new_files:
+                saved_new = save_uploaded_images(
+                    new_files,
+                    product.get("id", uuid.uuid4().hex[:12])
+                ) or []
+                if len(saved_new) != len(new_files):
+                    st.error("추가한 사진 저장에 실패했습니다. 다시 시도해 주세요.")
                     return
+            saved_iter = iter(saved_new)
+            updated_images = []
+            for entry in final_entries:
+                if entry.get("file") is not None:
+                    updated_images.append(next(saved_iter))
+                else:
+                    updated_images.append(entry["url"])
 
-                delete_local_images(
-                    product
-                )
+            kept = set(updated_images)
+            removed_images = [v for v in current_images if v not in kept]
+            if removed_images:
+                delete_local_images({"images": removed_images})
 
-                updated_images = save_uploaded_images(
-                    replacement_images,
-                    product.get(
-                        "id",
-                        uuid.uuid4().hex[:12]
-                    )
-                )
-
-                product["images"] = updated_images
-                product["image"] = (
-                    updated_images[0]
-                    if updated_images
-                    else ""
-                )
-
-            elif edit_image.strip():
-                if (
-                    not current_images
-                    or
-                    edit_image.strip()
-                    != str(current_images[0])
-                ):
-                    product["images"] = [
-                        edit_image.strip()
-                    ]
-
-                    product["image"] = (
-                        edit_image.strip()
-                    )
+            product["images"] = updated_images
+            product["image"] = updated_images[0]
 
             detail_files = [] if remove_detail_files else current_detail_files
             if replacement_detail_files:
@@ -3121,6 +3216,8 @@ def render_manage_products():
             st.session_state["product_action_notice"] = (
                 f"상품 수정 완료 · {product.get('name', '')}" + option_notice
             )
+            st.session_state.pop(f"edit_img_order_{selected_id}_{edit_ver}", None)
+            st.session_state[f"edit_upload_ver_{selected_id}"] = edit_ver + 1
 
             st.rerun()
 
