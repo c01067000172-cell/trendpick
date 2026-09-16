@@ -18,6 +18,25 @@ STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 CATEGORIES = {"bike": "중고 바이크", "wear": "바이크 의류", "gear": "바이크 용품"}
 
 BRAND = "투제이로드 TWO J ROAD"
+BIZ_NAME = "투제이-로드(2J-ROAD)"
+BIZ_OWNER = "전선옥"
+BIZ_REG_NO = "505-48-00676"
+BIZ_ADDRESS = "경기도 포천시 내촌면 금강로3224번길 11-7, 다동 1층"
+BIZ_MAIL_ORDER_NO = os.getenv("MASPICK_MAIL_ORDER_NO", "").strip()
+
+
+def business_info_html():
+    check_url = "https://www.ftc.go.kr/bizCommPop.do?wrkr_no=" + BIZ_REG_NO.replace("-", "")
+    parts = [
+        f"<b>{esc(BIZ_NAME)}</b>",
+        f"대표 {esc(BIZ_OWNER)}",
+        f'사업자등록번호 {esc(BIZ_REG_NO)} (<a href="{esc(check_url, quote=True)}" '
+        'target="_blank" rel="noopener noreferrer">사업자정보확인</a>)',
+    ]
+    if BIZ_MAIL_ORDER_NO:
+        parts.append(f"통신판매업신고 {esc(BIZ_MAIL_ORDER_NO)}")
+    line2 = esc(BIZ_ADDRESS) + (f" · 전화 {esc(PHONE)}" if PHONE else "")
+    return " · ".join(parts) + "<br>" + line2
 PHONE = os.getenv("MASPICK_PHONE", "").strip()
 LABEL_TO_KIND = {label: kind for kind, label in CATEGORIES.items()}
 
@@ -327,7 +346,7 @@ footer{{margin-top:40px;border-top:1px solid #333;padding-top:16px;font-size:14p
 <nav class="sub">{sub_links}</nav>
 {crumb_html}
 {body}
-<footer><p>포천 투제이로드(TWO J ROAD) · {esc(STORE_ADDRESS)}{phone_html}<br>
+<footer><p>{business_info_html()}<br>
 중고 오토바이 · 바이크 의류 · 오토바이 헬멧 · 라이딩 용품<br>
 <a href="{esc(map_url, quote=True)}" rel="noopener">네이버 지도에서 위치 보기</a> · <a href="/sitemap.xml">사이트맵</a></p></footer>
 </body></html>'''
@@ -1374,7 +1393,8 @@ def _shop_shell(title, body, script="", head_extra=""):
 <title>{esc(title)} | TWO J ROAD</title>{head_extra}
 <style>{SHOP_CSS}</style></head><body><div class="wrap">
 <div class="top"><a class="logo" href="/">TWO J ROAD</a><a href="/">쇼핑 계속하기</a></div>
-{mode_badge}{body}</div>
+{mode_badge}{body}
+<footer style="margin-top:40px;border-top:1px solid #2a2a2a;padding-top:14px;font-size:13px;color:#999;line-height:1.7">{business_info_html()}</footer></div>
 <script>{SHOP_JS}</script><script>{script}</script></body></html>'''
 
 
