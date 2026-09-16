@@ -2637,13 +2637,6 @@ def render_add_product():
             key=f"add_uploaded_images_{add_ver}"
         )
 
-        add_image_entries = render_image_order_editor(
-            f"add_img_order_{add_ver}",
-            uploaded_image_entries(uploaded_images),
-            allow_remove=True,
-        )
-        uploaded_images = [e["file"] for e in add_image_entries]
-
         image = st.text_input(
             "또는 대표 이미지 URL",
             placeholder="직접 업로드하면 비워두어도 됩니다.",
@@ -2708,6 +2701,16 @@ def render_add_product():
                 placeholder="1,868cc",
                 key="add_cc"
             )
+
+    st.markdown("#### 사진 순서 · 미리보기")
+    add_image_entries = render_image_order_editor(
+        f"add_img_order_{add_ver}",
+        uploaded_image_entries(uploaded_images),
+        allow_remove=True,
+    )
+    if not add_image_entries:
+        st.caption("위에서 상품 사진을 선택하면 여기에 미리보기가 나오고 순서를 바꿀 수 있습니다.")
+    uploaded_images = [e["file"] for e in add_image_entries]
 
     add_options_text, add_extras = "", {}
     if product_type != "중고 바이크":
@@ -3007,7 +3010,7 @@ def render_manage_products():
     )
 
     edit_ver = st.session_state.get(f"edit_upload_ver_{selected_id}", 0)
-    st.markdown("**상품 사진**")
+    st.markdown("#### 상품 사진 · 순서 변경")
     added_images = st.file_uploader(
         "사진 추가 (여러 장 한 번에 선택 가능)",
         type=[
