@@ -1442,10 +1442,33 @@ def unpack_extras(value):
         try:
             data = json.loads(value[len(DETAIL_PREFIX):])
             if isinstance(data, dict):
-                return {k: str(data.get(k) or "") for k in ("size_table", "care")}
+                return {k: str(data.get(k) or "") for k in EXTRA_KEYS}
         except (ValueError, TypeError):
             pass
-    return {"size_table": "", "care": ""}
+    return {k: "" for k in EXTRA_KEYS}
+
+
+EXTRA_KEYS = ("size_table", "size_table_m", "size_table_w", "care", "fabric")
+
+FABRIC_ATTRS = [
+    ("두께감", ["얇음", "보통", "두꺼움"]),
+    ("비침", ["없음", "보통", "있음"]),
+    ("신축성", ["없음", "보통", "좋음"]),
+    ("안감", ["있음", "없음", "기모안감"]),
+]
+
+
+def parse_fabric(value):
+    result = {}
+    for part in str(value or "").split("|"):
+        if ":" in part:
+            key, val = part.split(":", 1)
+            result[key.strip()] = val.strip()
+    return result
+
+
+def fabric_to_text(values):
+    return "|".join(f"{k}:{v}" for k, v in values.items() if v)
 
 
 def upload_detail_files(files, product_id):
@@ -1823,6 +1846,24 @@ def _size_table_html(header, rows):
     )
 
 
+def _fabric_table_html(values):
+    rows = []
+    for attr, choices in FABRIC_ATTRS:
+        current = values.get(attr, "")
+        cells = "".join(
+            f'<td class="{"on" if c == current else ""}">{escape(c)}</td>' for c in choices
+        )
+        rows.append(f"<tr><th>{escape(attr)}</th>{cells}</tr>")
+    return (
+        "<style>.pp-fabric{width:100%;border-collapse:collapse;font-size:14px;border-top:1px solid #555}"
+        ".pp-fabric th{text-align:left;padding:14px 8px;width:28%;font-weight:700}"
+        ".pp-fabric td{padding:14px 8px;color:#6b6f7a}"
+        ".pp-fabric td.on{color:#fff;font-weight:700}"
+        ".pp-fabric tr{border-bottom:1px solid #2a2a2a}</style>"
+        f'<table class="pp-fabric">{"".join(rows)}</table>'
+    )
+
+
 def _stars(value):
     value = max(0, min(5, int(round(float(value or 0)))))
     return "★" * value + "☆" * (5 - value)
@@ -1856,29 +1897,44 @@ def _render_purchase_box(product, features):
     is_bike = product.get("type") == "bike"
     picked = []
 
-    st.markdown("**옵션 선택**" if options else "**수량**")
     if options:
-        for index, opt in enumerate(options):
+        st.markdown("**사이즈 · 옵션 선택**")
+        names = [str(o.get("name")) for o in options]
+        by_name = {str(o.get("name")): o for o in options}
+
+        def _option_label(name):
+            opt = by_name[name]
+            extra = int(opt.get("extra_price") or 0)
+            stock = opt.get("stock")
+            label = name
+            if extra:
+                label += f" (+{extra:,}원)"
+            if stock is not None and int(stock) <= 0:
+                label += " · 품절"
+            return label
+
+        chosen = st.pills(
+            "옵션", names, selection_mode="single", format_func=_option_label,
+            key=f"pp_opt_{pid}", label_visibility="collapsed",
+        )
+        if chosen:
+            opt = by_name[chosen]
             stock = opt.get("stock")
             extra = int(opt.get("extra_price") or 0)
-            label = str(opt.get("name"))
-            note = []
-            if extra:
-                note.append(f"+{extra:,}원")
-            if stock is not None:
-                note.append("품절" if int(stock) <= 0 else f"재고 {int(stock)}")
-            c1, c2 = st.columns([3, 2], vertical_alignment="center")
-            c1.markdown(f"{escape(label)}  \n<span style='color:#999;font-size:12px'>{money(price + extra)}"
-                        f"{' · ' + ' · '.join(note) if note else ''}</span>", unsafe_allow_html=True)
-            max_qty = 0 if (stock is not None and int(stock) <= 0) else min(20, int(stock) if stock is not None else 20)
-            qty = c2.number_input(
-                "수량", min_value=0, max_value=max(max_qty, 0), value=0, step=1,
-                key=f"pp_qty_{pid}_{index}", label_visibility="collapsed",
-                disabled=max_qty <= 0,
-            )
-            if qty:
-                picked.append({"o": label, "q": int(qty), "unit": price + extra})
+            if stock is not None and int(stock) <= 0:
+                st.warning("품절된 옵션입니다. 다른 옵션을 선택해 주세요.")
+            else:
+                max_qty = min(20, int(stock)) if stock is not None else 20
+                c1, c2 = st.columns([3, 2], vertical_alignment="center")
+                c1.markdown(f"**{escape(chosen)}**  \n<span style='color:#999;font-size:12px'>"
+                            f"{money(price + extra)}"
+                            f"{' · 재고 ' + str(int(stock)) if stock is not None else ''}</span>",
+                            unsafe_allow_html=True)
+                qty = c2.number_input("수량", min_value=1, max_value=max_qty, value=1, step=1,
+                                      key=f"pp_qty_{pid}_{chosen}", label_visibility="collapsed")
+                picked.append({"o": chosen, "q": int(qty), "unit": price + extra})
     else:
+        st.markdown("**수량**")
         qty = 1
         if not is_bike:
             qty = st.number_input("수량", min_value=1, max_value=20, value=1, step=1,
@@ -1896,7 +1952,7 @@ def _render_purchase_box(product, features):
         unsafe_allow_html=True,
     )
     if not picked:
-        st.caption("옵션별 수량을 선택하면 장바구니·구매 버튼이 활성화됩니다.")
+        st.caption("사이즈·옵션을 선택하면 장바구니·구매 버튼이 활성화됩니다.")
         safe_markdown(
             '<div class="contact-actions"><span class="contact-btn" style="opacity:.45">장바구니</span>'
             '<span class="contact-btn primary" style="opacity:.45">구매하기</span></div>',
@@ -2079,14 +2135,32 @@ def _product_popup_body(product_id):
         with st.expander("상세정보", expanded=True):
             safe_markdown(_spec_table_html(specs), unsafe_allow_html=True)
 
-        size_header, size_rows = ([], [])
-        if features and extras.get("size_table"):
-            size_header, size_rows = features.parse_size_table(extras.get("size_table"))
-        if size_header or extras.get("care"):
+        size_tables = []
+        if features:
+            for label, key in (("남성", "size_table_m"), ("여성", "size_table_w"), ("공용", "size_table")):
+                if extras.get(key):
+                    header, rows = features.parse_size_table(extras.get(key))
+                    if header:
+                        size_tables.append((label, header, rows))
+        fabric = parse_fabric(extras.get("fabric"))
+        if size_tables or extras.get("care") or fabric:
             with st.expander("사이즈 및 세탁 주의사항", expanded=True):
-                if size_header:
+                if size_tables:
                     st.markdown("**사이즈 정보** (단위: cm)")
-                    safe_markdown(_size_table_html(size_header, size_rows), unsafe_allow_html=True)
+                    chosen = size_tables[0]
+                    if len(size_tables) > 1:
+                        labels = [t[0] for t in size_tables]
+                        picked_label = st.segmented_control(
+                            "사이즈표 구분", labels, default=labels[0],
+                            key=f"pp_size_gender_{pid}", label_visibility="collapsed",
+                        ) or labels[0]
+                        chosen = next(t for t in size_tables if t[0] == picked_label)
+                    elif chosen[0] != "공용":
+                        st.caption(chosen[0] + " 사이즈")
+                    safe_markdown(_size_table_html(chosen[1], chosen[2]), unsafe_allow_html=True)
+                if fabric:
+                    st.markdown("**소재 정보**")
+                    safe_markdown(_fabric_table_html(fabric), unsafe_allow_html=True)
                 if extras.get("care"):
                     st.markdown("**세탁 정보**")
                     st.text(extras.get("care"))
@@ -2121,6 +2195,72 @@ def _product_popup_body(product_id):
                 _render_qna(product, features)
 
 
+POPUP_HOOK_JS = r"""
+(function () {
+  var P = window.parent;
+  if (!P || P.__tjrPopupHook) return;
+  var code = "(" + function () {
+    if (window.__tjrPopupHook) return;
+    window.__tjrPopupHook = true;
+    document.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+      if (!a) return;
+      var url;
+      try { url = new URL(a.getAttribute("href"), location.href); } catch (err) { return; }
+      if (url.origin !== location.origin || url.pathname !== location.pathname) return;
+      var pid = url.searchParams.get("detail");
+      if (!pid || !/^[A-Za-z0-9_-]{1,64}$/.test(pid)) return;
+      var btn = document.querySelector(".st-key-tjr_open_" + pid + " button");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      btn.click();
+    }, true);
+  } + ")();";
+  var s = P.document.createElement("script");
+  s.textContent = code;
+  P.document.head.appendChild(s);
+})();
+"""
+
+
+def _open_popup(product_id):
+    try:
+        if "id" in st.query_params:
+            del st.query_params["id"]
+        if st.query_params.get("page") == "detail":
+            st.query_params["page"] = "home"
+        st.query_params["detail"] = str(product_id)
+    except Exception:
+        pass
+
+
+def render_popup_triggers():
+    """상품 카드를 눌렀을 때 페이지를 새로 불러오지 않고 팝업을 여는 숨은 버튼과 연결 스크립트.
+
+    스크립트가 동작하지 않는 환경에서는 카드 링크가 원래대로 페이지 이동으로 동작합니다.
+    """
+    safe_markdown(
+        "<style>.st-key-tjr_popup_hook{display:none!important}</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(key="tjr_popup_hook"):
+        for product in PRODUCTS:
+            pid = str(product.get("id", ""))
+            if not pid or not all(c.isalnum() or c in "_-" for c in pid) or len(pid) > 64:
+                continue
+            st.button(
+                "open " + pid, key=f"tjr_open_{pid}",
+                on_click=_open_popup, args=(pid,),
+            )
+        try:
+            import streamlit.components.v1 as components
+            components.html("<script>" + POPUP_HOOK_JS + "</script>", height=0)
+        except Exception:
+            pass
+
+
 def render_product_popup(product_id):
     import inspect
     product = get_product(PRODUCTS, product_id)
@@ -2143,7 +2283,7 @@ def render_product_popup(product_id):
 
 OPTION_HELP = (
     "한 줄에 옵션 하나: 옵션명, 재고, 추가금액\n"
-    "예) 블랙 / M, 3, 0\n    블랙 / XL, , 2000   ← 재고를 비우면 수량 제한 없음\n"
+    "예) S, 3, 0\n    M, 5, 0\n    XL, , 2000   ← 재고를 비우면 수량 제한 없음\n"
     "옵션을 하나라도 넣으면 고객은 옵션을 골라야 구매할 수 있습니다."
 )
 SIZE_HELP = (
@@ -2152,16 +2292,41 @@ SIZE_HELP = (
 )
 
 
-def render_product_extras_inputs(key_prefix, options_text="", size_text="", care_text=""):
-    with st.expander("옵션 · 사이즈표 · 세탁정보", expanded=bool(options_text or size_text or care_text)):
-        options_value = st.text_area("옵션 (옵션명, 재고, 추가금액)", value=options_text, height=120,
+def render_product_extras_inputs(key_prefix, options_text="", extras=None):
+    extras = extras or {}
+    filled = bool(options_text or any(extras.get(k) for k in EXTRA_KEYS))
+    with st.expander("옵션 · 사이즈표 · 소재 · 세탁정보", expanded=filled):
+        options_value = st.text_area("사이즈·옵션 (옵션명, 재고, 추가금액)", value=options_text, height=120,
                                      help=OPTION_HELP, key=f"{key_prefix}_options",
-                                     placeholder="블랙 / M, 3, 0")
-        size_value = st.text_area("사이즈표", value=size_text, height=110, help=SIZE_HELP,
-                                  key=f"{key_prefix}_size", placeholder="사이즈, 총장, 허리\nM, 100, 30")
-        care_value = st.text_area("세탁 정보", value=care_text, height=80,
+                                     placeholder="S, 3, 0\nM, 5, 0\nL, 2, 0")
+        c1, c2 = st.columns(2)
+        size_m = c1.text_area("남성 사이즈표", value=extras.get("size_table_m", ""), height=120,
+                              help=SIZE_HELP, key=f"{key_prefix}_size_m",
+                              placeholder="사이즈, 가슴, 총장\nS, 50, 68\nM, 52, 70")
+        size_w = c2.text_area("여성 사이즈표", value=extras.get("size_table_w", ""), height=120,
+                              help=SIZE_HELP, key=f"{key_prefix}_size_w",
+                              placeholder="사이즈, 가슴, 총장\nS, 46, 62\nM, 48, 64")
+        size_common = extras.get("size_table", "")
+        if size_common:
+            size_common = st.text_area("공용 사이즈표 (기존 입력)", value=size_common, height=90,
+                                       help=SIZE_HELP, key=f"{key_prefix}_size")
+        st.markdown("**소재 정보**")
+        current = parse_fabric(extras.get("fabric"))
+        fabric = {}
+        for attr, choices in FABRIC_ATTRS:
+            fabric[attr] = st.segmented_control(
+                attr, choices, default=current.get(attr) if current.get(attr) in choices else None,
+                key=f"{key_prefix}_fabric_{attr}",
+            ) or ""
+        care_value = st.text_area("세탁 정보", value=extras.get("care", ""), height=80,
                                   key=f"{key_prefix}_care", placeholder="손세탁 권장 / 표백제 사용 금지")
-    return options_value, size_value, care_value
+    return options_value, {
+        "size_table": (size_common or "").strip(),
+        "size_table_m": size_m.strip(),
+        "size_table_w": size_w.strip(),
+        "care": care_value.strip(),
+        "fabric": fabric_to_text(fabric),
+    }
 
 
 def validate_product_options(options_text):
@@ -2450,9 +2615,9 @@ def render_add_product():
                 key="add_cc"
             )
 
-    add_options_text, add_size_text, add_care_text = "", "", ""
+    add_options_text, add_extras = "", {}
     if product_type != "중고 바이크":
-        add_options_text, add_size_text, add_care_text = render_product_extras_inputs("add_extras")
+        add_options_text, add_extras = render_product_extras_inputs("add_extras")
 
     if st.button(
         "상품 등록하기",
@@ -2533,7 +2698,7 @@ def render_add_product():
             "description": pack_detail(
                 description.strip(),
                 saved_detail_files,
-                {"size_table": add_size_text.strip(), "care": add_care_text.strip()},
+                add_extras,
             ),
             "demo": False,
         }
@@ -2791,7 +2956,7 @@ def render_manage_products():
 
     current_extras = unpack_extras(product.get("description", ""))
     options_loaded = False
-    edit_options_text, edit_size_text, edit_care_text = "", "", ""
+    edit_options_text, edit_extras = "", dict(current_extras)
     if product.get("type") != "bike":
         _edit_features = _shop_features()
         current_options_text = ""
@@ -2803,11 +2968,10 @@ def render_manage_products():
                 options_loaded = True
             except Exception:
                 st.warning("현재 옵션을 불러오지 못했습니다. 이번 저장에서는 옵션을 변경하지 않습니다.")
-        edit_options_text, edit_size_text, edit_care_text = render_product_extras_inputs(
+        edit_options_text, edit_extras = render_product_extras_inputs(
             f"edit_extras_{selected_id}",
             current_options_text,
-            current_extras.get("size_table", ""),
-            current_extras.get("care", ""),
+            current_extras,
         )
 
     bike_values = {}
@@ -2935,7 +3099,7 @@ def render_manage_products():
             product["description"] = pack_detail(
                 edit_description.strip(),
                 detail_files,
-                {"size_table": edit_size_text.strip(), "care": edit_care_text.strip()},
+                edit_extras,
             )
 
             for key, value in bike_values.items():
@@ -3191,6 +3355,9 @@ elif page == "store":
 
 else:
     render_home()
+
+if page != "admin":
+    render_popup_triggers()
 
 _popup_product_id = get_param("detail", "") or (get_param("id", "") if page == "detail" else "")
 if _popup_product_id and page != "admin":
