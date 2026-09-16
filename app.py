@@ -3478,14 +3478,25 @@ if _popup_product_id and page != "admin":
 # FOOTER
 # =========================================================
 
+BIZ_NAME = "투제이-로드(2J-ROAD)"
+BIZ_OWNER = "전선옥"
+BIZ_REG_NO = "505-48-00676"
+BIZ_ADDRESS = "경기도 포천시 내촌면 금강로3224번길 11-7, 다동 1층"
+BIZ_MAIL_ORDER_NO = os.getenv("MASPICK_MAIL_ORDER_NO", "").strip()
+_biz_check_url = "https://www.ftc.go.kr/bizCommPop.do?wrkr_no=" + BIZ_REG_NO.replace("-", "")
+_biz_phone = f" · 전화 {escape(MASPICK_PHONE)}" if MASPICK_PHONE else ""
+_biz_mail_order = f" · 통신판매업신고 {escape(BIZ_MAIL_ORDER_NO)}" if BIZ_MAIL_ORDER_NO else ""
+
 safe_markdown(
     f"""
     <div
         class="footer-block"
         translate="no"
     >
-        {STORE_NAME}<br>
-        {STORE_ADDRESS}<br>
+        <b>{escape(BIZ_NAME)}</b><br>
+        대표 {escape(BIZ_OWNER)} · 사업자등록번호 {escape(BIZ_REG_NO)}
+        (<a href="{escape(_biz_check_url, quote=True)}" target="_blank" rel="noopener noreferrer">사업자정보확인</a>){_biz_mail_order}<br>
+        {escape(BIZ_ADDRESS)}{_biz_phone}<br>
 
         중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
 
