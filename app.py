@@ -3482,7 +3482,7 @@ BIZ_NAME = "투제이-로드(2J-ROAD)"
 BIZ_OWNER = "전선옥"
 BIZ_REG_NO = "505-48-00676"
 BIZ_ADDRESS = "경기도 포천시 내촌면 금강로3224번길 11-7, 다동 1층"
-BIZ_MAIL_ORDER_NO = os.getenv("MASPICK_MAIL_ORDER_NO", "").strip()
+BIZ_MAIL_ORDER_NO = os.getenv("MASPICK_MAIL_ORDER_NO", "").strip() or "2024-경기포천-0754"
 _biz_check_url = "https://www.ftc.go.kr/bizCommPop.do?wrkr_no=" + BIZ_REG_NO.replace("-", "")
 _biz_phone = f" · 전화 {escape(MASPICK_PHONE)}" if MASPICK_PHONE else ""
 _biz_mail_order = f" · 통신판매업신고 {escape(BIZ_MAIL_ORDER_NO)}" if BIZ_MAIL_ORDER_NO else ""
