@@ -51,6 +51,11 @@ else:
 
 PRODUCTS = load_products()
 
+# 관리자 화면은 캐시 대신 DB에서 직접 불러옵니다. 저장 모듈이 DB 확인 상태를 갱신해야
+# 상품 저장·삭제·이미지 업로드가 허용되고, 오래된 목록으로 덮어쓰는 일도 막습니다.
+if _jinbike_supabase_ready and str(st.query_params.get(\"page\", \"\") or \"\") == \"admin\":
+    PRODUCTS = _jinbike_uncached_load_products()
+
 _site_analytics_client = None
 if _jinbike_supabase_ready:
     try:
