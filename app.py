@@ -1761,9 +1761,17 @@ def _gallery_html(sources, name):
             f'<input class="pg-choice" type="radio" name="{gallery_id}" id="{photo_id}" '
             f'aria-label="상품 사진 {index + 1}"{checked}>'
         )
+        nav = ""
+        if total > 1:
+            prev_id = f"{gallery_id}-{(index - 1) % total}"
+            next_id = f"{gallery_id}-{(index + 1) % total}"
+            nav = (
+                f'<label class="pg-nav pg-prev" for="{prev_id}" role="button" aria-label="이전 사진">&#8249;</label>'
+                f'<label class="pg-nav pg-next" for="{next_id}" role="button" aria-label="다음 사진">&#8250;</label>'
+            )
         photos.append(
             f'<div class="pg-slide s-{index}"><img src="{esc_src}" '
-            f'alt="{escape(name, quote=True)} 사진 {index + 1}">'
+            f'alt="{escape(name, quote=True)} 사진 {index + 1}">{nav}'
             f'<span class="pg-count">{index + 1} / {total}</span></div>'
         )
         thumbs.append(
@@ -1782,6 +1790,12 @@ def _gallery_html(sources, name):
         ".pg-slide img{width:100%;height:100%;object-fit:contain}"
         ".pg-count{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.65);color:#fff;"
         "font-size:12px;padding:3px 9px;border-radius:12px}"
+        ".pg-nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;"
+        "border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:30px;line-height:40px;"
+        "text-align:center;cursor:pointer;user-select:none;-webkit-user-select:none;z-index:2;"
+        "-webkit-tap-highlight-color:transparent}"
+        ".pg-nav:hover{background:rgba(255,105,0,.9)}"
+        ".pg-prev{left:8px}.pg-next{right:8px}"
         ".pg-thumbs{display:flex;gap:6px;overflow-x:auto;padding:8px 2px}"
         ".pg-thumb{flex:0 0 58px;height:58px;border:2px solid #333;border-radius:4px;overflow:hidden;cursor:pointer}"
         ".pg-thumb img{width:100%;height:100%;object-fit:cover}"
