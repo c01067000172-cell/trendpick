@@ -379,7 +379,9 @@ def product_page(p):
             )
     detail = "/?" + urlencode({"page": "detail", "id": p["id"]})
     body += f'<p><a href="{esc(detail, quote=True)}">상품 상세 보기</a></p>'
-    if PAYMENT_ENABLED and state == "판매중" and price > 0:
+    if kind == "bike" and state == "판매중":
+        body += '<div class="notice">중고 바이크는 온라인 결제 없이 매장 방문·전화 상담 후 거래합니다.</div>'
+    if PAYMENT_ENABLED and kind != "bike" and state == "판매중" and price > 0:
         label = "테스트 결제" if TOSS_TEST_MODE else "구매하기"
         body += (
             f'<p><a class="buy" href="/checkout/{quote(str(p["id"]), safe="")}">'
@@ -738,6 +740,8 @@ def quote_items(raw_items, strict=True):
                 line["error"] = "가격이 설정되지 않은 상품입니다."
             elif options and not option:
                 line["error"] = "옵션을 선택해 주세요."
+            elif _is_bike(product):
+                line["error"] = "중고 바이크는 온라인 결제 없이 매장 상담 후 거래합니다."
             elif option and not options:
                 line["error"] = "선택한 옵션이 없는 상품입니다."
             else:
