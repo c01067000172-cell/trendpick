@@ -1363,6 +1363,20 @@ label{display:block;margin:12px 0 6px;color:#bbb}input,select,textarea{width:100
 #payment-method,#agreement{background:white;border-radius:6px;margin-top:16px;overflow:hidden;min-height:60px}
 .panel,.grid>section{min-width:0}.empty{padding:40px 0;text-align:center;color:#aaa}
 @media(max-width:760px){.grid{grid-template-columns:1fr}.addr-row{grid-template-columns:1fr}}
+body{font-size:14px;line-height:1.5}
+h1{font-size:21px;margin:6px 0 12px}h2{font-size:16px;margin:0 0 10px}
+.wrap{padding:16px 14px 44px}.top{margin-bottom:14px}.logo{font-size:20px}
+.panel{padding:14px}.grid{gap:14px}
+.line{grid-template-columns:56px 1fr auto;gap:10px;padding:10px 0}.line img{width:56px;height:56px}
+.line .nm{font-size:14px;line-height:1.35}.line .op,.line .er{font-size:12px}
+.price{font-size:14px}.total{font-size:17px;margin:12px 0}
+label{font-size:13px;margin:10px 0 4px}
+input,select,textarea{padding:9px 11px;line-height:1.3}
+.agree{margin:12px 0;font-size:13px}.small{font-size:12px}
+.btn{font-size:15px;padding:12px;margin-top:10px}
+.test-banner{padding:9px 11px;font-size:13px;margin-bottom:12px}
+#msg{font-size:13px}
+@media(max-width:760px){body{font-size:13px}h1{font-size:19px}.wrap{padding:12px 10px 40px}.panel{padding:12px}}
 """
 
 SHOP_JS = r"""
