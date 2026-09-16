@@ -3497,6 +3497,9 @@ safe_markdown(
         대표 {escape(BIZ_OWNER)} · 사업자등록번호 {escape(BIZ_REG_NO)}
         (<a href="{escape(_biz_check_url, quote=True)}" target="_blank" rel="noopener noreferrer">사업자정보확인</a>){_biz_mail_order}<br>
         {escape(BIZ_ADDRESS)}{_biz_phone}<br>
+        <a href="/terms" target="_self">이용약관</a> ·
+        <a href="/privacy" target="_self"><b>개인정보처리방침</b></a> ·
+        <a href="/refund" target="_self">교환·환불 안내</a><br>
 
         중고 오토바이 · 바이크 의류 · 헬멧 · 라이딩 용품<br>
 
