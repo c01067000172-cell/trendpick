@@ -2514,6 +2514,215 @@ def render_image_order_editor(key, entries, allow_remove=False, per_row=5):
     return [by_id[i] for i in st.session_state[key]["order"]]
 
 
+def _naver_sync():
+    try:
+        import naver_sync
+        return naver_sync
+    except Exception as exc:
+        print("[NAVER] sync unavailable: " + type(exc).__name__ + ": " + str(exc)[:200], flush=True)
+        return None
+
+
+NAVER_WARRANTY_DEFAULT = "제품 이상 시 공정거래위원회 고시 소비자분쟁해결기준에 의거 보상합니다."
+
+
+def _naver_pick(label, rows, current, key, placeholder):
+    ids = [""] + [r["id"] for r in rows]
+    names = {r["id"]: r["name"] for r in rows}
+    index = ids.index(current) if current in ids else 0
+    return st.selectbox(
+        label, ids, index=index, key=key,
+        format_func=lambda v: names.get(v, placeholder) if v else placeholder,
+    ) or ""
+
+
+def render_naver_fields(key_prefix, defaults, existing=None, show_stock=True):
+    """네이버 동시 등록 입력칸. (사용 여부, 입력값) 반환. 중고 바이크에는 호출하지 않습니다."""
+    sync = _naver_sync()
+    existing = existing or {}
+    with st.expander("네이버 스마트스토어 동시 등록 (전시중지)", expanded=bool(existing)):
+        if sync is None or not sync.enabled():
+            st.info("네이버 연동 비밀키(NAVER_SYNC_SECRET)가 아직 설정되지 않아 동시 등록을 사용할 수 없습니다.")
+            return False, {}
+        use = st.checkbox(
+            "이 상품을 네이버 스마트스토어에도 등록 (항상 전시중지 상태로 생성)",
+            value=bool(existing), key=f"{key_prefix}_use",
+        )
+        if not use:
+            return False, {}
+        base = dict(sync.latest_fields())
+        base.update({k: v for k, v in (existing or {}).items() if v not in (None, "")})
+        for k, v in defaults.items():
+            if not base.get(k) or (k in ("size", "caution") and not existing.get(k)):
+                if v:
+                    base[k] = v
+        try:
+            categories = sync.catalog("categories")
+            origins = sync.catalog("origins")
+            addresses = sync.catalog("addresses")
+        except Exception as exc:
+            st.error("네이버 목록을 불러오지 못했습니다: " + str(exc))
+            return False, {}
+
+        f = {}
+        f["category"] = _naver_pick("네이버 카테고리 (입력해서 검색)", categories, str(base.get("category") or ""),
+                                    f"{key_prefix}_category", "카테고리 선택")
+        c1, c2 = st.columns(2)
+        with c1:
+            f["origin"] = _naver_pick("원산지", origins, str(base.get("origin") or ""), f"{key_prefix}_origin", "원산지 선택")
+            f["manufacturer"] = st.text_input("제조사", value=str(base.get("manufacturer") or ""), key=f"{key_prefix}_manufacturer")
+            company_codes = [""] + list(sync.DELIVERY_COMPANIES)
+            cur = str(base.get("company") or "")
+            f["company"] = st.selectbox(
+                "택배사", company_codes, index=company_codes.index(cur) if cur in company_codes else 0,
+                format_func=lambda v: sync.DELIVERY_COMPANIES.get(v, "택배사 선택"), key=f"{key_prefix}_company",
+            ) or ""
+            f["fee"] = str(st.number_input("배송비(원) · 0이면 무료배송", min_value=0, step=500,
+                                           value=int(base.get("fee") or 3000), key=f"{key_prefix}_fee"))
+            f["return_fee"] = str(st.number_input("반품 배송비(원)", min_value=0, step=500,
+                                                  value=int(base.get("return_fee") or 3000), key=f"{key_prefix}_return_fee"))
+            f["phone"] = st.text_input("A/S 연락처", value=str(base.get("phone") or ""), key=f"{key_prefix}_phone")
+        with c2:
+            f["importer"] = st.text_input("수입사 (수입품만)", value=str(base.get("importer") or ""), key=f"{key_prefix}_importer")
+            f["shipping"] = _naver_pick("출고지", addresses, str(base.get("shipping") or ""), f"{key_prefix}_shipping", "출고지 선택")
+            f["returning"] = _naver_pick("반품지", addresses, str(base.get("returning") or ""), f"{key_prefix}_returning", "반품지 선택")
+            f["free_over"] = str(st.number_input("무료배송 기준금액(원) · 없으면 0", min_value=0, step=10000,
+                                                 value=int(base.get("free_over") or 0), key=f"{key_prefix}_free_over"))
+            f["exchange_fee"] = str(st.number_input("교환 배송비(원)", min_value=0, step=500,
+                                                    value=int(base.get("exchange_fee") or 6000), key=f"{key_prefix}_exchange_fee"))
+            f["as_guide"] = st.text_input("A/S 안내", value=str(base.get("as_guide") or "구매 매장으로 문의해 주세요."),
+                                          key=f"{key_prefix}_as_guide")
+        st.markdown("**의류 필수 고시정보**")
+        c3, c4 = st.columns(2)
+        with c3:
+            f["material"] = st.text_input("소재·혼용률", value=str(base.get("material") or ""), key=f"{key_prefix}_material",
+                                          placeholder="예: 면 100%")
+            f["color"] = st.text_input("색상", value=str(base.get("color") or ""), key=f"{key_prefix}_color")
+            f["size"] = st.text_input("치수", value=str(base.get("size") or ""), key=f"{key_prefix}_size")
+            f["packDateText"] = st.text_input("제조연월", value=str(base.get("packDateText") or ""),
+                                              key=f"{key_prefix}_pack", placeholder="예: 2026-09")
+        with c4:
+            f["caution"] = st.text_input("세탁방법·취급 주의", value=str(base.get("caution") or ""), key=f"{key_prefix}_caution")
+            f["warrantyPolicy"] = st.text_input("품질보증기준", value=str(base.get("warrantyPolicy") or NAVER_WARRANTY_DEFAULT),
+                                                key=f"{key_prefix}_warranty")
+            f["afterServiceDirector"] = st.text_input("A/S 책임자와 전화번호", value=str(base.get("afterServiceDirector") or ""),
+                                                      key=f"{key_prefix}_as_director")
+            if show_stock:
+                f["stock"] = str(st.number_input("네이버 재고 (사이즈 옵션이 없을 때만 사용)", min_value=1, step=1,
+                                                 value=int(base.get("stock") or 1), key=f"{key_prefix}_stock"))
+        f["condition"] = "NEW"
+        f["policy_confirm"] = "yes" if st.checkbox(
+            "청약철회·반품·환불은 네이버 기본 고지를 사용하며, 입력한 정보가 실제 상품과 같음을 확인했습니다.",
+            value=base.get("policy_confirm") == "yes", key=f"{key_prefix}_policy",
+        ) else ""
+        st.caption("사이트에 등록한 사진(JPG·PNG), 설명, 가격, 사이즈별 재고가 네이버로 함께 전송됩니다. "
+                   "네이버에는 항상 전시중지로 만들어지니, 스마트스토어센터에서 확인 후 직접 전시해 주세요.")
+    return True, f
+
+
+def naver_product_payload(product):
+    text, files = unpack_detail(product.get("description", ""))
+    brand = str(product.get("brand") or "").strip()
+    name = str(product.get("name") or "").strip()
+    if brand and not name.lower().startswith(brand.lower()):
+        name = f"{brand} {name}"
+    options = []
+    features = _shop_features()
+    if features is not None:
+        try:
+            options = features._backend.product_options(str(product.get("id")))
+        except Exception:
+            options = []
+    return {
+        "name": name[:100],
+        "price": int(product.get("price") or 0),
+        "description": text,
+        "images": [u for u in product_images(product) if str(u).startswith("https://")][:10],
+        "detail_images": [
+            f.get("url") for f in files
+            if isinstance(f, dict) and f.get("kind") == "image" and str(f.get("url", "")).startswith("https://")
+        ][:20],
+        "options": [
+            {"name": o.get("name"), "stock": o.get("stock"), "extra_price": o.get("extra_price")}
+            for o in options
+        ],
+    }
+
+
+def naver_defaults_for(product, options_text="", extras=None):
+    extras = extras or {}
+    sizes = []
+    for line in str(options_text or "").splitlines():
+        head = line.split(",")[0].strip()
+        if head:
+            sizes.append(head)
+    return {
+        "manufacturer": str(product.get("brand") or "").strip() or "투제이로드",
+        "size": ", ".join(sizes) if sizes else "FREE",
+        "caution": " ".join(str(extras.get("care") or "").split())[:200],
+        "phone": MASPICK_PHONE,
+    }
+
+
+def run_naver_publish(product, fields):
+    sync = _naver_sync()
+    if sync is None:
+        return "error", "네이버 연동 모듈을 불러오지 못했습니다."
+    try:
+        return sync.publish(str(product.get("id")), naver_product_payload(product), fields)
+    except Exception as exc:
+        return "error", f"네이버 등록 중 오류: {type(exc).__name__}: {str(exc)[:300]}"
+
+
+def render_naver_status_and_publish(product):
+    """상품 수정 화면: 네이버 등록 상태 표시와 전시중지 등록 버튼."""
+    if product.get("type") == "bike":
+        return
+    sync = _naver_sync()
+    if sync is None or not sync.enabled():
+        return
+    pid = str(product.get("id"))
+    try:
+        setting = sync.load_setting(pid) or {}
+    except Exception:
+        setting = {}
+    status = setting.get("sync_status")
+    st.markdown("#### 네이버 스마트스토어")
+    if status == "synced":
+        st.success(f"네이버 등록 완료 · 상품번호 {setting.get('naver_origin_product_no')} (전시중지로 생성). "
+                   "사이트에서 수정한 내용은 네이버에 자동 반영되지 않으니 스마트스토어센터에서 수정해 주세요.")
+        return
+    if status == "sending" or status == "unknown":
+        st.warning("이전 네이버 전송 결과를 확인하지 못했습니다. 스마트스토어센터에서 등록 여부를 먼저 확인해 주세요.")
+    if status == "error" and setting.get("sync_error"):
+        st.error("지난 네이버 등록 실패: " + str(setting.get("sync_error")))
+    current_extras = unpack_extras(product.get("description", ""))
+    options_text = ""
+    features = _shop_features()
+    if features is not None:
+        try:
+            options_text = features.options_to_text(features._backend.product_options(pid))
+        except Exception:
+            pass
+    use, fields = render_naver_fields(
+        f"naver_edit_{pid}", naver_defaults_for(product, options_text, current_extras),
+        existing=setting.get("fields") or {},
+    )
+    if not use:
+        return
+    st.caption("먼저 '수정 저장'으로 사이트 내용을 저장한 뒤 눌러주세요. 저장된 사이트 상품 기준으로 전송됩니다.")
+    if status in ("sending", "unknown"):
+        return
+    if st.button("네이버에 전시중지로 등록", key=f"naver_publish_{pid}", use_container_width=True):
+        with st.spinner("네이버에 등록하는 중입니다. 사진이 많으면 1분 정도 걸릴 수 있어요..."):
+            state, message = run_naver_publish(product, fields)
+        if state == "synced":
+            st.session_state["product_action_notice"] = message
+            st.rerun()
+        else:
+            st.error(message)
+
+
 # =========================================================
 # ADMIN LOGIN
 # =========================================================
@@ -2738,8 +2947,13 @@ def render_add_product():
             )
 
     add_options_text, add_extras = "", {}
+    add_naver_use, add_naver_fields = False, {}
     if product_type != "중고 바이크":
         add_options_text, add_extras = render_product_extras_inputs("add_extras")
+        add_naver_use, add_naver_fields = render_naver_fields(
+            "naver_add",
+            naver_defaults_for({"brand": brand}, add_options_text, add_extras),
+        )
 
     if st.button(
         "상품 등록하기",
@@ -2852,6 +3066,16 @@ def render_add_product():
         st.session_state["product_action_notice"] = (
             f"상품 등록 완료 · {new_product['name']}" + option_notice
         )
+        if add_naver_use and product_type != "중고 바이크":
+            with st.spinner("사이트 등록 완료. 네이버 스마트스토어에 전시중지로 등록하는 중..."):
+                naver_state, naver_message = run_naver_publish(new_product, add_naver_fields)
+            if naver_state == "synced":
+                st.session_state["product_action_notice"] += " · " + naver_message
+            else:
+                st.session_state["naver_action_notice"] = (
+                    "사이트 등록은 완료됐지만 네이버 등록은 실패했습니다: " + naver_message
+                    + " → 상품 수정 화면에서 입력을 고친 뒤 '네이버에 전시중지로 등록'을 눌러주세요."
+                )
         st.session_state.pop(f"add_img_order_{add_ver}", None)
         st.session_state["add_upload_ver"] = add_ver + 1
 
@@ -3101,6 +3325,8 @@ def render_manage_products():
             current_options_text,
             current_extras,
         )
+
+    render_naver_status_and_publish(product)
 
     bike_values = {}
 
@@ -3404,6 +3630,13 @@ def render_admin():
                 "admin_logged_in"
             ] = False
 
+            st.rerun()
+
+    naver_notice = st.session_state.get("naver_action_notice")
+    if naver_notice:
+        st.error(naver_notice)
+        if st.button("네이버 안내 닫기", key="dismiss_naver_notice"):
+            st.session_state.pop("naver_action_notice", None)
             st.rerun()
 
     notice = st.session_state.get("product_action_notice")
