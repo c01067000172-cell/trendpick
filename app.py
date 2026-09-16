@@ -2170,7 +2170,9 @@ def _product_popup_body(product_id):
                 st.text(detail_text)
             render_detail_files(detail_files)
 
-        if features:
+        if product.get("type") == "bike":
+            st.info("중고 바이크는 온라인 결제 없이 매장 방문·전화 상담 후 거래합니다. 아래 버튼으로 문의해 주세요.")
+        elif features:
             with st.container(border=True):
                 _render_purchase_box(product, features)
 
