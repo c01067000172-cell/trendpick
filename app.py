@@ -2432,8 +2432,30 @@ def uploaded_image_entries(files):
     return entries
 
 
-def render_image_order_editor(key, entries, allow_remove=False):
-    """사진 미리보기 + 순서 변경(◀ ▶ ★) + 삭제(✕). 정렬된 항목 목록을 돌려줍니다."""
+def _image_order_action(key, widget_key, item_id):
+    choice = st.session_state.get(widget_key)
+    st.session_state[widget_key] = None
+    state = st.session_state.get(key) or {"order": [], "removed": []}
+    order, removed = list(state["order"]), list(state["removed"])
+    if item_id not in order:
+        return
+    idx = order.index(item_id)
+    if choice == "◀" and idx > 0:
+        order[idx - 1], order[idx] = order[idx], order[idx - 1]
+    elif choice == "▶" and idx < len(order) - 1:
+        order[idx + 1], order[idx] = order[idx], order[idx + 1]
+    elif choice == "★" and idx > 0:
+        order.insert(0, order.pop(idx))
+    elif choice == "✕":
+        removed.append(order.pop(idx))
+    st.session_state[key] = {"order": order, "removed": removed}
+
+
+def render_image_order_editor(key, entries, allow_remove=False, per_row=5):
+    """사진 미리보기 + 순서 변경(◀ ★ ▶) + 빼기(✕). 정렬된 항목 목록을 돌려줍니다.
+
+    버튼 줄은 한 개의 위젯이라, 이미 칸(column) 안에서 호출해도 겹침 제한에 걸리지 않습니다.
+    """
     by_id = {e["id"]: e for e in entries}
     state = st.session_state.get(key) or {"order": [], "removed": []}
     removed = [i for i in state["removed"] if i in by_id]
@@ -2443,11 +2465,10 @@ def render_image_order_editor(key, entries, allow_remove=False):
     if not order:
         return []
 
-    st.caption("첫 번째 사진이 대표 사진입니다. ◀ ▶ 로 순서를 바꾸고, ★ 를 누르면 맨 앞으로 옮깁니다.")
-    per_row = 5
-    action = None
+    st.caption(f"사진 {len(order)}장 · 첫 번째가 대표 사진입니다. ◀ ▶ 순서 이동, ★ 대표로, ✕ 빼기")
+    actions = ["◀", "★", "▶", "✕"] if allow_remove else ["◀", "★", "▶"]
     for row_start in range(0, len(order), per_row):
-        cols = st.columns(per_row)
+        cols = st.columns(per_row, gap="small")
         for offset, item_id in enumerate(order[row_start:row_start + per_row]):
             idx = row_start + offset
             item = by_id[item_id]
@@ -2464,26 +2485,16 @@ def render_image_order_editor(key, entries, allow_remove=False):
                     f'{idx + 1}{" · 대표" if idx == 0 else ""}</div></div>',
                     unsafe_allow_html=True,
                 )
-                buttons = st.columns(4 if allow_remove else 3, gap="small")
-                if buttons[0].button("◀", key=f"{key}_l_{item_id}", disabled=idx == 0, help="앞으로"):
-                    action = ("move", idx, idx - 1)
-                if buttons[1].button("▶", key=f"{key}_r_{item_id}", disabled=idx == len(order) - 1, help="뒤로"):
-                    action = ("move", idx, idx + 1)
-                if buttons[2].button("★", key=f"{key}_f_{item_id}", disabled=idx == 0, help="대표 사진으로"):
-                    action = ("first", idx, 0)
-                if allow_remove and buttons[3].button("✕", key=f"{key}_x_{item_id}", help="이 사진 빼기"):
-                    action = ("remove", idx, None)
-    if action:
-        kind, a, b = action
-        if kind == "move":
-            order[a], order[b] = order[b], order[a]
-        elif kind == "first":
-            order.insert(0, order.pop(a))
-        elif kind == "remove":
-            removed.append(order.pop(a))
-        st.session_state[key] = {"order": order, "removed": removed}
-        st.rerun()
-    return [by_id[i] for i in order]
+                widget_key = f"{key}_act_{item_id}"
+                st.segmented_control(
+                    f"사진 {idx + 1} 이동",
+                    actions,
+                    key=widget_key,
+                    label_visibility="collapsed",
+                    on_change=_image_order_action,
+                    args=(key, widget_key, item_id),
+                )
+    return [by_id[i] for i in st.session_state[key]["order"]]
 
 
 # =========================================================
@@ -2636,6 +2647,13 @@ def render_add_product():
             help=f"최대 {MAX_PRODUCT_IMAGES}장까지 등록할 수 있습니다.",
             key=f"add_uploaded_images_{add_ver}"
         )
+        add_image_entries = render_image_order_editor(
+            f"add_img_order_{add_ver}",
+            uploaded_image_entries(uploaded_images),
+            allow_remove=True,
+            per_row=3,
+        )
+        uploaded_images = [e["file"] for e in add_image_entries]
 
         image = st.text_input(
             "또는 대표 이미지 URL",
@@ -2701,16 +2719,6 @@ def render_add_product():
                 placeholder="1,868cc",
                 key="add_cc"
             )
-
-    st.markdown("#### 사진 순서 · 미리보기")
-    add_image_entries = render_image_order_editor(
-        f"add_img_order_{add_ver}",
-        uploaded_image_entries(uploaded_images),
-        allow_remove=True,
-    )
-    if not add_image_entries:
-        st.caption("위에서 상품 사진을 선택하면 여기에 미리보기가 나오고 순서를 바꿀 수 있습니다.")
-    uploaded_images = [e["file"] for e in add_image_entries]
 
     add_options_text, add_extras = "", {}
     if product_type != "중고 바이크":
