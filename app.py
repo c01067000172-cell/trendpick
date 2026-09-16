@@ -1839,8 +1839,8 @@ def _size_table_html(header, rows):
     body = "".join("<tr>" + "".join(f"<td>{escape(c)}</td>" for c in r) + "</tr>" for r in rows)
     return (
         "<style>.pp-size{width:100%;border-collapse:collapse;font-size:13px;text-align:center}"
-        ".pp-size th{background:#1b1b1b;padding:7px 4px;font-weight:700}"
-        ".pp-size td{border-bottom:1px solid #262626;padding:7px 4px}</style>"
+        ".pp-size th{background:rgba(128,128,128,.18);color:inherit;padding:7px 4px;font-weight:700}"
+        ".pp-size td{border-bottom:1px solid rgba(128,128,128,.3);color:inherit;padding:7px 4px}</style>"
         f'<div style="overflow-x:auto"><table class="pp-size"><thead><tr>{head}</tr></thead>'
         f"<tbody>{body}</tbody></table></div>"
     )
@@ -1855,11 +1855,12 @@ def _fabric_table_html(values):
         )
         rows.append(f"<tr><th>{escape(attr)}</th>{cells}</tr>")
     return (
-        "<style>.pp-fabric{width:100%;border-collapse:collapse;font-size:14px;border-top:1px solid #555}"
-        ".pp-fabric th{text-align:left;padding:14px 8px;width:28%;font-weight:700}"
-        ".pp-fabric td{padding:14px 8px;color:#6b6f7a}"
-        ".pp-fabric td.on{color:#fff;font-weight:700}"
-        ".pp-fabric tr{border-bottom:1px solid #2a2a2a}</style>"
+        "<style>.pp-fabric{width:100%;border-collapse:collapse;font-size:14px;"
+        "border-top:1px solid rgba(128,128,128,.6);color:inherit}"
+        ".pp-fabric th{text-align:left;padding:14px 8px;width:28%;font-weight:700;color:inherit}"
+        ".pp-fabric td{padding:14px 8px;color:inherit;opacity:.38}"
+        ".pp-fabric td.on{opacity:1;font-weight:800;color:#ff6900}"
+        ".pp-fabric tr{border-bottom:1px solid rgba(128,128,128,.25)}</style>"
         f'<table class="pp-fabric">{"".join(rows)}</table>'
     )
 
