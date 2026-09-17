@@ -313,7 +313,7 @@ def page(title, summary, path, body, image_url="", schemas=None, crumbs=None):
     if crumbs:
         crumb_html, crumb_data = _breadcrumb(crumbs)
         schemas.append(crumb_data)
-    og_image = image_url or (SITE + "/app/static/jinbike_banner.webp")
+    og_image = image_url or (SITE + "/app/static/og_naver.jpg")
     sub_links = " · ".join(
         f'<a href="/catalog/{kind}/{slug}">{esc(info["label"])}</a>'
         for kind, subs in SUBCATEGORIES.items()
