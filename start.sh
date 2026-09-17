@@ -21,6 +21,7 @@ BRAND_KO = "투제이로드"
 BRAND_EN = "TWO J ROAD"
 STORE_ADDRESS = "경기 포천시 내촌면 금강로3224번길 11-7"
 PHONE = os.getenv("MASPICK_PHONE", "").strip()
+OG_IMAGE = SITE + "/app/static/og_naver.jpg?v=20260917"
 
 index = Path(streamlit.__file__).resolve().parent / "static" / "index.html"
 html = index.read_text(encoding="utf-8")
@@ -42,10 +43,10 @@ for pattern in patterns:
     html = re.sub(pattern, "", html, flags=re.I | re.S)
 html = re.sub(r"<title\b[^>]*>.*?</title>", "", html, flags=re.I | re.S)
 
-page_title = "투제이로드 (TWO J ROAD) | 포천 중고 바이크·오토바이 의류·헬멧"
+page_title = "투제이로드 (TWO J ROAD) | 포천 중고 바이크·바이크 의류·바이크 용품"
 page_description = (
-    "투제이로드(TWO J ROAD)는 경기 포천의 바이크 매장입니다. 중고 바이크와 중고 오토바이, "
-    "바이크 자켓·오토바이 장갑·오토바이 헬멧 등 바이크 의류와 라이딩 용품을 판매합니다."
+    "투제이로드(TWO J ROAD)는 경기 포천의 바이크 매장입니다. "
+    "중고 바이크·중고 오토바이, 바이크 의류와 바이크 용품을 판매합니다."
 )
 
 schema = {
@@ -55,7 +56,7 @@ schema = {
     "name": BRAND_EN,
     "alternateName": [BRAND_KO, "포천 투제이로드", "TWOJROAD", "TWO J ROAD 포천"],
     "url": SITE + "/",
-    "image": SITE + "/app/static/og_naver.jpg",
+    "image": OG_IMAGE,
     "description": page_description,
     "address": {
         "@type": "PostalAddress",
@@ -68,7 +69,7 @@ schema = {
     "keywords": [
         "투제이로드", "TWO J ROAD", "포천 투제이로드", "포천 중고 바이크",
         "중고 오토바이", "바이크 의류", "오토바이 자켓", "바이크 장갑",
-        "오토바이 헬멧", "라이딩 용품"
+        "오토바이 헬멧", "바이크 용품"
     ],
 }
 if PHONE:
@@ -86,10 +87,14 @@ metadata = (
     + '<meta property="og:site_name" content="TWO J ROAD (투제이로드)" />\n'
     + '<meta property="og:url" content="' + SITE + '/" />\n'
     + '<meta property="og:locale" content="ko_KR" />\n'
-    + '<meta property="og:image" content="' + SITE + '/app/static/og_naver.jpg" />\n'
+    + '<meta property="og:image" content="' + OG_IMAGE + '" />\n'
+    + '<meta property="og:image:secure_url" content="' + OG_IMAGE + '" />\n'
+    + '<meta property="og:image:type" content="image/jpeg" />\n'
     + '<meta property="og:image:width" content="1200" />\n'
     + '<meta property="og:image:height" content="630" />\n'
+    + '<meta property="og:image:alt" content="TWO J ROAD 포천 바이크 매장 대표 이미지" />\n'
     + '<meta name="twitter:card" content="summary_large_image" />\n'
+    + '<meta name="twitter:image" content="' + OG_IMAGE + '" />\n'
     + '<script id="twojroad-schema" type="application/ld+json">'
     + json.dumps(schema, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     + '</script>\n'
@@ -105,10 +110,10 @@ body_text = (
     "<!--TWOJ-SEO-BODY-START-->"
     '<main style="max-width:1100px;margin:0 auto;padding:24px;color:#eee;'
     'background:#080808;font:16px/1.7 sans-serif">'
-    "<h1>투제이로드 (TWO J ROAD) · 포천 중고 바이크 · 바이크 의류 · 오토바이 헬멧</h1>"
+    "<h1>투제이로드 (TWO J ROAD) · 포천 중고 바이크 · 바이크 의류 · 바이크 용품</h1>"
     "<p>투제이로드(TWO J ROAD)는 경기 포천에 있는 바이크 매장입니다. "
     "중고 바이크와 중고 오토바이 매물, 바이크 자켓·오토바이 장갑·바이크 바지·바이크 신발 같은 "
-    "바이크 의류, 오토바이 헬멧과 라이딩 용품을 판매합니다.</p>"
+    "바이크 의류와 오토바이 헬멧 등 바이크 용품을 판매합니다.</p>"
     '<nav aria-label="상품 분류"><ul>'
     '<li><a href="/catalog/bike">포천 중고 바이크 · 중고 오토바이</a></li>'
     '<li><a href="/catalog/wear">바이크 의류</a> : '
