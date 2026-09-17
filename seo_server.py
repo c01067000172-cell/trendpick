@@ -325,6 +325,7 @@ def page(title, summary, path, body, image_url="", schemas=None, crumbs=None):
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="{esc(summary, quote=True)}">
 <meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="alternate" type="application/rss+xml" title="투제이로드 최신 상품" href="/rss.xml">
 <link rel="canonical" href="{url}"><meta property="og:title" content="{esc(title, quote=True)}">
 <meta property="og:description" content="{esc(summary, quote=True)}"><meta property="og:url" content="{url}">
 <meta property="og:type" content="website"><meta property="og:site_name" content="TWO J ROAD (투제이로드)">
@@ -553,6 +554,52 @@ def sitemap(rows):
         + xml
         + "</urlset>"
     )
+
+
+def product_rss(rows):
+    """Public product feed; contains no customer, order or account data."""
+    from xml.etree.ElementTree import Element, SubElement, tostring
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+
+    def field(parent, name, value):
+        # XML 1.0 forbids control characters even when escaped.
+        value = str(value or "")
+        value = "".join(c for c in value if c in "\t\n\r" or
+                        0x20 <= ord(c) <= 0xD7FF or
+                        0xE000 <= ord(c) <= 0xFFFD or
+                        0x10000 <= ord(c) <= 0x10FFFF)
+        SubElement(parent, name).text = value
+
+    root = Element("rss", {"version": "2.0"})
+    channel = SubElement(root, "channel")
+    field(channel, "title", BRAND + " 최신 상품")
+    field(channel, "link", SITE + "/")
+    field(channel, "description", "투제이로드에 등록된 실제 상품의 최신 정보입니다.")
+    field(channel, "language", "ko-kr")
+    seen = set()
+    for p in sorted(rows, key=lambda p: str(p.get("updated_at") or ""), reverse=True):
+        ident = str(p.get("id") or "").strip()
+        if not ident or ident in seen or p.get("demo"):
+            continue
+        seen.add(ident)
+        item = SubElement(channel, "item")
+        url = SITE + product_url(p)
+        field(item, "title", display_name(p))
+        field(item, "link", url)
+        guid = SubElement(item, "guid", {"isPermaLink": "true"})
+        guid.text = url
+        body, _ = description(p)
+        field(item, "description", body)
+        try:
+            modified = datetime.fromisoformat(str(p.get("updated_at") or "").replace("Z", "+00:00"))
+            if modified.tzinfo is not None:
+                field(item, "pubDate", format_datetime(modified.astimezone(timezone.utc), usegmt=True))
+        except (ValueError, TypeError, OverflowError):
+            pass
+        if len(seen) >= 50:
+            break
+    return tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def _lastmod(p):
@@ -1776,7 +1823,10 @@ def main():
                 self.set_header("Retry-After", "60")
                 self.finish("상품 정보를 일시적으로 불러올 수 없습니다.")
                 return
-            if path.endswith("sitemap.xml"):
+            if path == "/rss.xml":
+                self.set_header("Content-Type", "application/rss+xml; charset=utf-8")
+                self.finish(product_rss(rows))
+            elif path.endswith("sitemap.xml"):
                 self.set_header("Content-Type", "application/xml; charset=utf-8")
                 self.finish(sitemap(rows))
             elif path.startswith("/catalog/"):
@@ -2029,6 +2079,7 @@ def main():
             r".*",
             [
                 (r"/robots\.txt", Public),
+                (r"/rss\.xml", Public),
                 (r"/(?:app/static/)?sitemap\.xml", Public),
                 (r"/catalog/([^/]+)", Public),
                 (r"/catalog/([^/]+)/([^/]+)", Public),
