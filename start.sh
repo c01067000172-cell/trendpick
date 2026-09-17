@@ -55,7 +55,7 @@ schema = {
     "name": BRAND_EN,
     "alternateName": [BRAND_KO, "포천 투제이로드", "TWOJROAD", "TWO J ROAD 포천"],
     "url": SITE + "/",
-    "image": SITE + "/app/static/jinbike_banner.webp",
+    "image": SITE + "/app/static/og_naver.jpg",
     "description": page_description,
     "address": {
         "@type": "PostalAddress",
@@ -86,7 +86,10 @@ metadata = (
     + '<meta property="og:site_name" content="TWO J ROAD (투제이로드)" />\n'
     + '<meta property="og:url" content="' + SITE + '/" />\n'
     + '<meta property="og:locale" content="ko_KR" />\n'
-    + '<meta property="og:image" content="' + SITE + '/app/static/jinbike_banner.webp" />\n'
+    + '<meta property="og:image" content="' + SITE + '/app/static/og_naver.jpg" />\n'
+    + '<meta property="og:image:width" content="1200" />\n'
+    + '<meta property="og:image:height" content="630" />\n'
+    + '<meta name="twitter:card" content="summary_large_image" />\n'
     + '<script id="twojroad-schema" type="application/ld+json">'
     + json.dumps(schema, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     + '</script>\n'
@@ -155,6 +158,19 @@ if src.exists():
         if image.mode not in ("RGB", "RGBA"):
             image = image.convert("RGB")
         image.save(dst, "WEBP", quality=82, method=6)
+
+jpg = Path("static/og_naver.jpg")
+if src.exists():
+    with Image.open(src) as image:
+        image = image.convert("RGB")
+        w, h = image.size
+        target = 1200 / 630
+        if w / h > target:
+            nw = int(h * target); x = (w - nw) // 2; image = image.crop((x, 0, x + nw, h))
+        else:
+            nh = int(w / target); y = (h - nh) // 2; image = image.crop((0, y, w, y + nh))
+        image = image.resize((1200, 630), Image.Resampling.LANCZOS)
+        image.save(jpg, "JPEG", quality=86, optimize=True)
 PY
 
 # Fallback crawler files. seo_server.py serves the live /robots.txt and /sitemap.xml.
