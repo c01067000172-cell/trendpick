@@ -11,6 +11,7 @@ from urllib.parse import quote, urlencode, urlparse
 from xml.sax.saxutils import escape as xml_escape
 
 import requests
+from seo_automation import INDEXNOW_KEY
 
 SITE = "https://www.maspick.co.kr"
 STORE_NAME = "TWO J ROAD"
@@ -1816,6 +1817,10 @@ def main():
                 self.set_header("Content-Type", "text/plain; charset=utf-8")
                 self.finish("User-agent: *\nAllow: /\nSitemap: " + SITE + "/sitemap.xml\n")
                 return
+            if path == "/" + INDEXNOW_KEY + ".txt":
+                self.set_header("Content-Type", "text/plain; charset=utf-8")
+                self.finish(INDEXNOW_KEY)
+                return
             try:
                 rows = await asyncio.to_thread(products)
             except Exception:
@@ -2079,6 +2084,7 @@ def main():
             r".*",
             [
                 (r"/robots\.txt", Public),
+                (r"/" + INDEXNOW_KEY + r"\.txt", Public),
                 (r"/rss\.xml", Public),
                 (r"/(?:app/static/)?sitemap\.xml", Public),
                 (r"/catalog/([^/]+)", Public),

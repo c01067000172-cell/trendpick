@@ -7,6 +7,7 @@ SOURCE = APP_FILE.read_text(encoding="utf-8")
 LOAD_TARGET = "PRODUCTS = load_products()"
 LOAD_INJECTION = """import jinbike_supabase_storage as _jinbike_supabase_storage
 import seo_server as _payment_backend
+import seo_automation as _seo_automation
 from datetime import datetime as _analytics_datetime, timedelta as _analytics_timedelta, timezone as _analytics_timezone
 from zoneinfo import ZoneInfo as _analytics_ZoneInfo
 
@@ -44,6 +45,17 @@ else:
     def _jinbike_cached_save_products(products):
         result = _jinbike_uncached_save_products(products)
         _jinbike_cached_load_products.clear()
+        # Search discovery is best-effort and must never make a product save fail.
+        try:
+            _seo_automation.notify_product_change(products)
+        except Exception as _seo_exc:
+            print(
+                "[SEO] product-change notification skipped: "
+                + type(_seo_exc).__name__
+                + ": "
+                + str(_seo_exc)[:300],
+                flush=True,
+            )
         return result
 
     load_products = _jinbike_cached_load_products
