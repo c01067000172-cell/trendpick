@@ -1,7 +1,9 @@
 import os
 import re
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from urllib.parse import urlparse
 
 from supabase import create_client
 
@@ -209,15 +211,16 @@ def generate_posts(
             body = "\n".join(parts)
             hashtags = _hashtags(words, business)
 
-        posts.append(
-            {
-                "channel": channel,
-                "title": title,
-                "body": body,
-                "hashtags": hashtags,
-                "status": "draft",
-            }
-        )
+        post = {
+            "channel": channel,
+            "title": title,
+            "body": body,
+            "hashtags": hashtags,
+            "status": "draft",
+        }
+        if channel == "site_seo" and site_url:
+            post["publish_url"] = site_url
+        posts.append(post)
     return posts
 
 
@@ -304,7 +307,10 @@ def list_campaigns(limit=50):
 def list_posts(campaign_id):
     data = (
         _db().table("marketing_posts")
-        .select("id,campaign_id,channel,title,body,hashtags,status,publish_url,external_id,error,created_at,updated_at")
+        .select(
+            "id,campaign_id,channel,title,body,hashtags,status,publish_url,external_id,error,"
+            "verification_status,last_checked_at,http_status,final_url,created_at,updated_at"
+        )
         .eq("campaign_id", str(campaign_id))
         .order("created_at")
         .execute()
@@ -316,12 +322,83 @@ def list_posts(campaign_id):
 def update_post(post_id, *, status, publish_url=""):
     if status not in {"draft", "ready", "published", "error"}:
         raise ValueError("지원하지 않는 게시 상태입니다.")
+    publish_url = _clean(publish_url, 500)
+    if status == "published" and not publish_url:
+        raise ValueError("게시 완료로 저장하려면 실제 게시 링크(URL)가 필요합니다.")
+    if publish_url:
+        parsed = urlparse(publish_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("게시 URL은 http:// 또는 https://로 시작하는 실제 주소를 입력해 주세요.")
     values = {
         "status": status,
-        "publish_url": _clean(publish_url, 500) or None,
+        "publish_url": publish_url or None,
+        "verification_status": "unchecked" if publish_url else "unchecked",
+        "last_checked_at": None,
+        "http_status": None,
+        "final_url": None,
         "updated_at": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
     }
     _db().table("marketing_posts").update(values).eq("id", str(post_id)).execute()
+
+
+def verify_post_url(post_id, publish_url):
+    publish_url = _clean(publish_url, 500)
+    if not publish_url:
+        raise ValueError("먼저 실제 게시 링크(URL)를 입력해 주세요.")
+    parsed = urlparse(publish_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("확인할 수 있는 http(s) 게시 링크를 입력해 주세요.")
+
+    checked_at = datetime.now(ZoneInfo("Asia/Seoul")).isoformat()
+    status = "failed"
+    http_status = None
+    final_url = None
+    message = "게시 링크에 접속하지 못했습니다."
+    try:
+        response = requests.get(
+            publish_url,
+            timeout=10,
+            allow_redirects=True,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (compatible; TWOJROAD-LinkVerifier/1.0; "
+                    "+https://www.maspick.co.kr/)"
+                )
+            },
+        )
+        http_status = int(response.status_code)
+        final_url = str(response.url or publish_url)[:500]
+        if 200 <= http_status < 400:
+            status = "verified"
+            message = f"링크 접속 확인 완료 (HTTP {http_status})"
+        elif http_status in {401, 403, 429}:
+            status = "blocked"
+            message = (
+                f"플랫폼이 자동 확인을 제한했습니다 (HTTP {http_status}). "
+                "링크 버튼으로 직접 열어 게시물을 확인해 주세요."
+            )
+        else:
+            status = "failed"
+            message = f"게시 링크 응답을 확인해 주세요 (HTTP {http_status})"
+    except requests.RequestException as exc:
+        message = f"링크 확인 실패: {type(exc).__name__}"
+
+    values = {
+        "publish_url": publish_url,
+        "verification_status": status,
+        "last_checked_at": checked_at,
+        "http_status": http_status,
+        "final_url": final_url,
+        "updated_at": checked_at,
+    }
+    _db().table("marketing_posts").update(values).eq("id", str(post_id)).execute()
+    return {
+        "status": status,
+        "http_status": http_status,
+        "final_url": final_url,
+        "checked_at": checked_at,
+        "message": message,
+    }
 
 
 def update_campaign_status(campaign_id, status):
