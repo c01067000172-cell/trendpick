@@ -230,6 +230,67 @@ def product_by_id(product_id):
     return product
 
 
+def marketing_campaign_by_id(campaign_id):
+    campaign_id = str(campaign_id or "").strip()
+    if not campaign_id:
+        return None
+    campaigns = (
+        db_client()
+        .table("marketing_campaigns")
+        .select(
+            "id,business,source_type,source_id,source_name,region,primary_keyword,"
+            "secondary_keywords,objective,contact_text,status,payload,created_at,updated_at"
+        )
+        .eq("id", campaign_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not isinstance(campaigns, list) or not campaigns:
+        return None
+    campaign = campaigns[0]
+    if campaign.get("status") == "archived":
+        return None
+    posts = (
+        db_client()
+        .table("marketing_posts")
+        .select("id,channel,title,body,hashtags,status,publish_url,updated_at")
+        .eq("campaign_id", campaign_id)
+        .eq("channel", "site_seo")
+        .limit(1)
+        .execute()
+        .data
+    )
+    campaign["site_post"] = posts[0] if isinstance(posts, list) and posts else None
+    return campaign
+
+
+def marketing_promo_entries():
+    try:
+        rows = (
+            db_client()
+            .table("marketing_campaigns")
+            .select("id,status,updated_at")
+            .neq("status", "archived")
+            .order("updated_at", desc=True)
+            .limit(500)
+            .execute()
+            .data
+        )
+        if not isinstance(rows, list):
+            return []
+        result = []
+        for row in rows:
+            ident = str(row.get("id") or "").strip()
+            if not ident:
+                continue
+            mod = str(row.get("updated_at") or "")[:10]
+            result.append((SITE + "/promo/" + quote(ident, safe=""), mod))
+        return result
+    except Exception:
+        return []
+
+
 def description(product):
     value = str(product.get("description") or "")
     if value.startswith("DOOJAY_DETAIL_V1:"):
@@ -468,6 +529,72 @@ def product_page(p):
     )
 
 
+def marketing_promo_page(campaign):
+    post = campaign.get("site_post") or {}
+    source_name = str(campaign.get("source_name") or "TWO J ROAD 안내")
+    region = str(campaign.get("region") or "").strip()
+    primary = str(campaign.get("primary_keyword") or "").strip()
+    secondary = campaign.get("secondary_keywords") or []
+    if not isinstance(secondary, list):
+        secondary = []
+    title = str(post.get("title") or "").strip() or " · ".join(
+        part for part in [region, primary, source_name, BRAND] if part
+    )
+    summary = str(post.get("body") or "").strip()
+    summary = " ".join(summary.split())[:155] or f"{source_name} 관련 안내입니다."
+    body = f"<h1>{esc(source_name)}</h1>"
+    if region:
+        body += f"<p>지역: {esc(region)}</p>"
+    body += f'<div class="text">{esc(str(post.get("body") or summary))}</div>'
+
+    keyword_items = [primary] + [str(x).strip() for x in secondary if str(x).strip()]
+    keyword_items = [x for i, x in enumerate(keyword_items) if x and x not in keyword_items[:i]]
+    if keyword_items:
+        body += "<p>관련 항목: " + " · ".join(esc(x) for x in keyword_items[:8]) + "</p>"
+
+    source_product = None
+    if campaign.get("source_type") == "product" and campaign.get("source_id"):
+        try:
+            source_product = product_by_id(campaign.get("source_id"))
+        except Exception:
+            source_product = None
+    hero = first_image(source_product) if source_product else ""
+
+    payload = campaign.get("payload") if isinstance(campaign.get("payload"), dict) else {}
+    source_url = str(payload.get("site_url") or "").strip()
+    if source_product:
+        source_url = SITE + product_url(source_product)
+    if source_url.startswith(("https://", "http://")):
+        body += (
+            f'<p><a class="buy" href="{esc(source_url, quote=True)}" '
+            'rel="noopener">상품·서비스 상세 보기</a></p>'
+        )
+
+    contact = str(campaign.get("contact_text") or "").strip()
+    if contact:
+        body += f"<p>{esc(contact)}</p>"
+
+    ident = str(campaign.get("id") or "")
+    path = "/promo/" + quote(ident, safe="")
+    schema = {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": title,
+        "url": SITE + path,
+        "description": summary,
+        "about": source_name,
+    }
+    return page(
+        title,
+        summary,
+        path,
+        body,
+        image_url=hero,
+        schemas=[schema],
+        crumbs=[("투제이로드 홈", "/"), ("광고·노출 안내", path)],
+    )
+
+
 def _card(p):
     name = display_name(p)
     state = str(p.get("condition") or "")
@@ -542,7 +669,7 @@ def sitemap(rows):
                 urls.append(SITE + f"/catalog/{kind}/{slug}")
     product_entries = [(SITE + product_url(p), _lastmod(p)) for p in rows]
     newest = max((mod for _, mod in product_entries if mod), default="")
-    entries = [(url, newest) for url in urls] + product_entries
+    entries = [(url, newest) for url in urls] + product_entries + marketing_promo_entries()
     xml = "".join(
         "<url><loc>" + xml_escape(url) + "</loc>"
         + ("<lastmod>" + mod + "</lastmod>" if mod else "")
@@ -1841,6 +1968,15 @@ def main():
                     raise tornado.web.HTTPError(404)
                 self.set_header("Content-Type", "text/html; charset=utf-8")
                 self.finish(catalog_page(kind, rows, ident))
+            elif path.startswith("/promo/"):
+                try:
+                    campaign = await asyncio.to_thread(marketing_campaign_by_id, kind)
+                except Exception:
+                    campaign = None
+                if campaign is None:
+                    raise tornado.web.HTTPError(404)
+                self.set_header("Content-Type", "text/html; charset=utf-8")
+                self.finish(marketing_promo_page(campaign))
             else:
                 product = next((p for p in rows if str(p["id"]) == str(kind)), None)
                 if product is None:
@@ -2090,6 +2226,7 @@ def main():
                 (r"/catalog/([^/]+)", Public),
                 (r"/catalog/([^/]+)/([^/]+)", Public),
                 (r"/products/([^/]+)", Public),
+                (r"/promo/([^/]+)", Public),
                 (r"/checkout/([^/]+)", Checkout),
                 (r"/checkout/?", ShopPage),
                 (r"/cart/?", ShopPage),
