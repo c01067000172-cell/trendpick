@@ -3662,7 +3662,7 @@ def render_marketing_center():
                 "category": str(source_product.get("category") or ""),
                 "price": source_product.get("price") or 0,
                 "description": str(default_description or "")[:800],
-                "site_url": SITE_URL,
+                "site_url": SITE_URL + "/products/" + source_id,
             }
             default_region = "경기 포천"
             default_keyword = str(source_product.get("category") or "바이크 의류")
@@ -3937,6 +3937,18 @@ def render_marketing_center():
                         use_container_width=True,
                     )
 
+            if channel == "naver_blog":
+                naver_share = marketing.naver_share_url(selected_campaign, post)
+                st.link_button(
+                    "네이버 공식 블로그 공유창 열기",
+                    naver_share,
+                    use_container_width=True,
+                )
+                st.caption(
+                    "네이버 공식 공유창에서 내용을 확인해 게시한 뒤, 최종 블로그 글 주소를 "
+                    "위 '실제 게시 링크'에 붙여 넣으면 게시 여부를 추적할 수 있습니다."
+                )
+
             if verification_status == "verified":
                 st.success("실제 게시 링크에 접속 가능한 상태입니다.")
             elif verification_status == "blocked":
@@ -3966,7 +3978,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260919-MKT2")
+    st.caption("적용 버전: TWOJROAD-20260919-MKT3")
     top1, top2 = st.columns(
         [5, 1]
     )
