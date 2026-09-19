@@ -3878,25 +3878,71 @@ def render_marketing_center():
                 )
             with p2:
                 publish_url = st.text_input(
-                    "게시 URL",
+                    "실제 게시 링크",
                     value=str(post.get("publish_url") or ""),
                     key=f"marketing_post_url_{post['id']}",
-                    placeholder="게시 후 실제 URL을 기록",
+                    placeholder="https://... 실제로 올라간 글 주소",
+                    help="게시 완료 상태는 실제 게시 링크가 있어야 저장됩니다.",
                 )
-            if st.button(
-                f"{label} 상태 저장",
-                key=f"marketing_post_save_{post['id']}",
-                use_container_width=True,
-            ):
-                try:
-                    marketing.update_post(
-                        post["id"],
-                        status=post_status,
-                        publish_url=publish_url,
+
+            verification_status = str(post.get("verification_status") or "unchecked")
+            verification_label = {
+                "unchecked": "미확인",
+                "verified": "접속 확인",
+                "blocked": "자동 확인 제한",
+                "failed": "확인 실패",
+            }.get(verification_status, verification_status)
+            verify_meta = []
+            if post.get("http_status"):
+                verify_meta.append("HTTP " + str(post.get("http_status")))
+            if post.get("last_checked_at"):
+                verify_meta.append("확인 " + str(post.get("last_checked_at"))[:16].replace("T", " "))
+            st.caption("게시 링크 상태: " + verification_label + ((" · " + " · ".join(verify_meta)) if verify_meta else ""))
+
+            action1, action2, action3 = st.columns([2, 2, 2])
+            with action1:
+                if st.button(
+                    f"{label} 상태 저장",
+                    key=f"marketing_post_save_{post['id']}",
+                    use_container_width=True,
+                ):
+                    try:
+                        marketing.update_post(
+                            post["id"],
+                            status=post_status,
+                            publish_url=publish_url,
+                        )
+                        st.session_state["marketing_notice"] = f"{label} 상태를 저장했습니다."
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+            with action2:
+                if st.button(
+                    "게시 링크 확인",
+                    key=f"marketing_post_verify_{post['id']}",
+                    use_container_width=True,
+                    disabled=not bool(publish_url.strip()),
+                ):
+                    try:
+                        result = marketing.verify_post_url(post["id"], publish_url)
+                        st.session_state["marketing_notice"] = result["message"]
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+            with action3:
+                if publish_url.strip():
+                    st.link_button(
+                        "실제 게시글 열기",
+                        publish_url.strip(),
+                        use_container_width=True,
                     )
-                    st.success(f"{label} 상태를 저장했습니다.")
-                except Exception as exc:
-                    st.error(str(exc))
+
+            if verification_status == "verified":
+                st.success("실제 게시 링크에 접속 가능한 상태입니다.")
+            elif verification_status == "blocked":
+                st.warning("플랫폼이 자동 접속 확인을 막고 있습니다. '실제 게시글 열기'로 직접 확인해 주세요.")
+            elif verification_status == "failed" and publish_url.strip():
+                st.error("저장된 게시 링크가 현재 정상 응답하지 않습니다.")
 
     st.markdown("---")
     delete_confirm = st.checkbox(
@@ -3920,7 +3966,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260919-MKT1")
+    st.caption("적용 버전: TWOJROAD-20260919-MKT2")
     top1, top2 = st.columns(
         [5, 1]
     )
