@@ -57,7 +57,7 @@ def seo_page_info():
 
     if page == "shop" and category == "바이크 용품":
         return (
-            "바이크 용품 | 헬멧·장갑·라이딩 기어 | 포천 TWO J ROAD",
+            "바이크 용품 | 헬멧·오토바이 용품 | 포천 TWO J ROAD",
             "포천 TWO J ROAD의 바이크 용품을 확인하세요.",
         )
 
@@ -3607,11 +3607,320 @@ def render_site_status():
             st.error(str(error))
 
 
+
+def render_marketing_center():
+    import marketing_center as marketing
+
+    st.subheader("광고 · 노출 자동화")
+    st.caption(
+        "상품·서비스 정보를 한 번 입력해 채널별 광고 작업본을 생성하고 게시 상태를 관리합니다. "
+        "공식 API가 연결되지 않은 채널은 작업본까지만 만들며 자동 로그인·비공식 매크로 게시를 사용하지 않습니다."
+    )
+
+    channel_rows = []
+    for channel, info in marketing.CHANNEL_INFO.items():
+        channel_rows.append({
+            "채널": info["label"],
+            "현재 단계": info["mode"],
+            "운영 기준": info["note"],
+        })
+    st.dataframe(channel_rows, hide_index=True, use_container_width=True)
+
+    st.markdown("#### 새 광고 작업 만들기")
+    business_label = st.selectbox(
+        "사업",
+        ["TWO J ROAD", "사랑을실은설비공"],
+        key="marketing_business",
+    )
+    business = "twojroad" if business_label == "TWO J ROAD" else "wheng"
+
+    source_product = None
+    source_id = ""
+    payload = {}
+    if business == "twojroad":
+        actual_products = [p for p in PRODUCTS if not p.get("demo")]
+        option_map = {"직접 입력": None}
+        for p in actual_products:
+            label = f"{p.get('name', '상품')} · {p.get('id', '')}"
+            option_map[label] = p
+        selected_source = st.selectbox(
+            "TWO J ROAD 상품 불러오기",
+            list(option_map.keys()),
+            key="marketing_product_source",
+        )
+        source_product = option_map[selected_source]
+        if source_product:
+            source_id = str(source_product.get("id") or "")
+            source_type = "product"
+            default_name = str(source_product.get("name") or "")
+            try:
+                default_description = unpack_detail(source_product.get("description", ""))[0]
+            except Exception:
+                default_description = str(source_product.get("description") or "")
+            payload = {
+                "brand": str(source_product.get("brand") or ""),
+                "category": str(source_product.get("category") or ""),
+                "price": source_product.get("price") or 0,
+                "description": str(default_description or "")[:800],
+                "site_url": SITE_URL,
+            }
+            default_region = "경기 포천"
+            default_keyword = str(source_product.get("category") or "바이크 의류")
+        else:
+            source_type = "manual"
+            default_name = ""
+            default_region = "경기 포천"
+            default_keyword = ""
+    else:
+        source_type = st.selectbox(
+            "소재 종류",
+            ["시공사례", "서비스", "일반홍보"],
+            key="marketing_wheng_source_type",
+        )
+        default_name = ""
+        default_region = "수원"
+        default_keyword = ""
+        payload = {}
+
+    source_key = source_id or f"{business}_{source_type}"
+    source_name = st.text_input(
+        "상품 · 서비스 · 시공명",
+        value=default_name,
+        key=f"marketing_source_name_{source_key}",
+        placeholder="예: 스트라이프 데님 와이드 팬츠 / 양변기 전체 교체",
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        region = st.text_input(
+            "지역",
+            value=default_region,
+            key=f"marketing_region_{source_key}",
+            placeholder="예: 경기 포천 / 수원",
+        )
+        primary_keyword = st.text_input(
+            "핵심 검색어",
+            value=default_keyword,
+            key=f"marketing_primary_{source_key}",
+            placeholder="예: 바이크 의류 / 수원 변기 교체",
+        )
+    with c2:
+        secondary_raw = st.text_area(
+            "보조 검색어",
+            key=f"marketing_secondary_{source_key}",
+            placeholder="쉼표 또는 줄바꿈으로 구분\n예: 바이크 바지, 남성 라이딩 팬츠",
+            height=108,
+        )
+        objective = st.selectbox(
+            "목표",
+            ["검색 노출", "판매 문의", "방문 유도", "시공 문의"],
+            key=f"marketing_objective_{source_key}",
+        )
+
+    channels = st.multiselect(
+        "작업할 채널",
+        list(marketing.CHANNEL_INFO.keys()),
+        default=list(marketing.CHANNEL_INFO.keys()),
+        format_func=marketing.channel_label,
+        key=f"marketing_channels_{source_key}",
+    )
+    contact_text = st.text_input(
+        "문의 문구",
+        key=f"marketing_contact_{source_key}",
+        placeholder="예: 구매 문의는 사이트 또는 매장으로 연락해 주세요.",
+    )
+
+    if st.button("채널별 광고 작업본 생성", type="primary", use_container_width=True):
+        secondary_keywords = [
+            item.strip()
+            for item in secondary_raw.replace("\n", ",").split(",")
+            if item.strip()
+        ]
+        try:
+            campaign = marketing.create_campaign(
+                business=business,
+                source_type=source_type,
+                source_id=source_id,
+                source_name=source_name,
+                region=region,
+                primary_keyword=primary_keyword,
+                secondary_keywords=secondary_keywords,
+                channels=channels,
+                objective=objective,
+                contact_text=contact_text,
+                payload=payload,
+            )
+            st.session_state["marketing_notice"] = (
+                f"광고 작업본 생성 완료 · {source_name} · {str(campaign.get('id', ''))[:8]}"
+            )
+            st.rerun()
+        except Exception as exc:
+            st.error(f"광고 작업 생성 실패: {exc}")
+
+    notice = st.session_state.pop("marketing_notice", None)
+    if notice:
+        st.success(notice)
+
+    st.markdown("#### 광고 작업 현황")
+    try:
+        campaigns = marketing.list_campaigns(80)
+    except Exception as exc:
+        st.error(f"광고관리 DB를 불러오지 못했습니다: {exc}")
+        return
+
+    if not campaigns:
+        st.info("아직 생성된 광고 작업이 없습니다.")
+        return
+
+    rows = []
+    for campaign in campaigns:
+        rows.append({
+            "생성": str(campaign.get("created_at") or "")[:16].replace("T", " "),
+            "사업": marketing.BUSINESS_LABEL.get(campaign.get("business"), campaign.get("business")),
+            "소재": campaign.get("source_name", ""),
+            "핵심 검색어": campaign.get("primary_keyword", ""),
+            "채널": ", ".join(marketing.channel_label(c) for c in (campaign.get("channels") or [])),
+            "상태": campaign.get("status", ""),
+            "ID": str(campaign.get("id", ""))[:8],
+        })
+    st.dataframe(rows, hide_index=True, use_container_width=True)
+
+    campaign_map = {
+        f"{c.get('source_name', '')} · {str(c.get('id', ''))[:8]}": c
+        for c in campaigns
+    }
+    selected_label = st.selectbox(
+        "작업 상세 보기",
+        list(campaign_map.keys()),
+        key="marketing_campaign_select",
+    )
+    selected_campaign = campaign_map[selected_label]
+    campaign_id = selected_campaign["id"]
+
+    status_col, action_col = st.columns([3, 1])
+    with status_col:
+        campaign_status = st.selectbox(
+            "캠페인 상태",
+            ["draft", "ready", "published", "archived"],
+            index=["draft", "ready", "published", "archived"].index(
+                selected_campaign.get("status")
+                if selected_campaign.get("status") in {"draft", "ready", "published", "archived"}
+                else "draft"
+            ),
+            format_func=lambda x: {
+                "draft": "작성중",
+                "ready": "게시 준비",
+                "published": "게시 완료",
+                "archived": "보관",
+            }[x],
+            key=f"marketing_campaign_status_{campaign_id}",
+        )
+    with action_col:
+        st.write("")
+        st.write("")
+        if st.button("상태 저장", key=f"marketing_campaign_save_{campaign_id}", use_container_width=True):
+            try:
+                marketing.update_campaign_status(campaign_id, campaign_status)
+                st.success("캠페인 상태를 저장했습니다.")
+            except Exception as exc:
+                st.error(str(exc))
+
+    try:
+        posts = marketing.list_posts(campaign_id)
+    except Exception as exc:
+        st.error(f"채널 작업본 조회 실패: {exc}")
+        return
+
+    for post in posts:
+        channel = post.get("channel", "")
+        label = marketing.channel_label(channel)
+        with st.expander(f"{label} · {post.get('status', 'draft')}", expanded=True):
+            st.caption(marketing.channel_note(channel))
+            st.text_input(
+                "제목",
+                value=str(post.get("title") or ""),
+                key=f"marketing_title_{post['id']}",
+                disabled=True,
+            )
+            st.text_area(
+                "본문",
+                value=str(post.get("body") or ""),
+                key=f"marketing_body_{post['id']}",
+                height=220,
+                disabled=True,
+            )
+            hashtags = " ".join("#" + str(tag) for tag in (post.get("hashtags") or []))
+            if hashtags:
+                st.text_area(
+                    "해시태그",
+                    value=hashtags,
+                    key=f"marketing_tags_{post['id']}",
+                    height=80,
+                    disabled=True,
+                )
+
+            p1, p2 = st.columns([2, 3])
+            with p1:
+                post_status = st.selectbox(
+                    "게시 상태",
+                    ["draft", "ready", "published", "error"],
+                    index=["draft", "ready", "published", "error"].index(
+                        post.get("status")
+                        if post.get("status") in {"draft", "ready", "published", "error"}
+                        else "draft"
+                    ),
+                    format_func=lambda x: {
+                        "draft": "작업본",
+                        "ready": "게시 준비",
+                        "published": "게시 완료",
+                        "error": "오류",
+                    }[x],
+                    key=f"marketing_post_status_{post['id']}",
+                )
+            with p2:
+                publish_url = st.text_input(
+                    "게시 URL",
+                    value=str(post.get("publish_url") or ""),
+                    key=f"marketing_post_url_{post['id']}",
+                    placeholder="게시 후 실제 URL을 기록",
+                )
+            if st.button(
+                f"{label} 상태 저장",
+                key=f"marketing_post_save_{post['id']}",
+                use_container_width=True,
+            ):
+                try:
+                    marketing.update_post(
+                        post["id"],
+                        status=post_status,
+                        publish_url=publish_url,
+                    )
+                    st.success(f"{label} 상태를 저장했습니다.")
+                except Exception as exc:
+                    st.error(str(exc))
+
+    st.markdown("---")
+    delete_confirm = st.checkbox(
+        "이 광고 작업 삭제 확인",
+        key=f"marketing_delete_confirm_{campaign_id}",
+    )
+    if st.button(
+        "선택한 광고 작업 삭제",
+        key=f"marketing_delete_{campaign_id}",
+        disabled=not delete_confirm,
+    ):
+        try:
+            marketing.delete_campaign(campaign_id)
+            st.session_state["marketing_notice"] = "광고 작업을 삭제했습니다."
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
 def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260911-R8")
+    st.caption("적용 버전: TWOJROAD-20260919-MKT1")
     top1, top2 = st.columns(
         [5, 1]
     )
@@ -3650,11 +3959,12 @@ def render_admin():
             with notice_area:
                 st.success(notice)
 
-    tab1, tab2, tab3 = st.tabs(
+    tab1, tab2, tab3, tab4 = st.tabs(
         [
             "상품 등록",
             "상품 수정 · 삭제",
             "사이트 현황",
+            "광고 · 노출 자동화",
         ]
     )
 
@@ -3665,6 +3975,8 @@ def render_admin():
         render_manage_products()
     with tab3:
         render_site_status()
+    with tab4:
+        render_marketing_center()
 
 
 def render_offline_store():
