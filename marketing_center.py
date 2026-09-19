@@ -3,7 +3,7 @@ import re
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from supabase import create_client
 
@@ -13,13 +13,13 @@ from jinbike_supabase_storage import _validate_server_key
 CHANNEL_INFO = {
     "site_seo": {
         "label": "사이트 SEO",
-        "mode": "사이트 내부 적용",
-        "note": "검색용 제목·설명 작업본을 생성합니다. 실제 페이지 반영은 사이트 코드/콘텐츠 연결 단계가 필요합니다.",
+        "mode": "자동 공개",
+        "note": "캠페인 생성과 동시에 TWO J ROAD 사이트에 공개 랜딩페이지를 만들고 실제 URL을 기록합니다.",
     },
     "naver_blog": {
         "label": "네이버 블로그",
-        "mode": "작업본 생성",
-        "note": "공식 게시 연동 전 단계입니다. 자동 로그인·비공식 매크로 게시를 사용하지 않습니다.",
+        "mode": "공식 공유창 연결",
+        "note": "네이버 공식 블로그 공유창을 열어 사용자가 확인 후 게시합니다. 네이버 블로그 글쓰기 Open API는 종료되어 비공식 자동게시를 사용하지 않습니다.",
     },
     "daangn": {
         "label": "당근",
@@ -99,6 +99,26 @@ def _truncate(text, limit):
     if len(text) <= limit:
         return text
     return text[: max(1, limit - 1)].rstrip() + "…"
+
+
+def promo_url(campaign_id):
+    return "https://www.maspick.co.kr/promo/" + str(campaign_id)
+
+
+def source_public_url(campaign):
+    payload = campaign.get("payload") if isinstance(campaign, dict) else {}
+    payload = payload if isinstance(payload, dict) else {}
+    url = _clean(payload.get("site_url"), 500)
+    return url or promo_url(campaign.get("id", ""))
+
+
+def naver_share_url(campaign, post):
+    target = source_public_url(campaign)
+    title = _clean((post or {}).get("title"), 100)
+    return "https://blog.naver.com/openapi/share?" + urlencode({
+        "url": target,
+        "title": title,
+    })
 
 
 def generate_posts(
@@ -283,7 +303,14 @@ def create_campaign(
         contact_text=row["contact_text"],
         payload=payload,
     )
-    post_rows = [dict(post, campaign_id=campaign["id"]) for post in posts]
+    post_rows = []
+    for post in posts:
+        row_post = dict(post, campaign_id=campaign["id"])
+        if row_post.get("channel") == "site_seo":
+            row_post["status"] = "published"
+            row_post["publish_url"] = promo_url(campaign["id"])
+            row_post["verification_status"] = "unchecked"
+        post_rows.append(row_post)
     if post_rows:
         _db().table("marketing_posts").insert(post_rows).execute()
     return campaign
