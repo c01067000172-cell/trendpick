@@ -403,11 +403,12 @@ DETAIL_PAYMENT_REPLACEMENT = """        st.write(detail_text)
 
         contact_buttons = \"\""""
 
-ADMIN_TABS_TARGET = """    tab1, tab2, tab3 = st.tabs(
+ADMIN_TABS_TARGET = """    tab1, tab2, tab3, tab4 = st.tabs(
         [
             \"상품 등록\",
             \"상품 수정 · 삭제\",
             \"사이트 현황\",
+            \"광고 · 노출 자동화\",
         ]
     )
 
@@ -417,14 +418,17 @@ ADMIN_TABS_TARGET = """    tab1, tab2, tab3 = st.tabs(
     with tab2:
         render_manage_products()
     with tab3:
-        render_site_status()"""
-ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab_feedback, tab4 = st.tabs(
+        render_site_status()
+    with tab4:
+        render_marketing_center()"""
+ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab_feedback, tab4, tab5 = st.tabs(
         [
             \"상품 등록\",
             \"상품 수정 · 삭제\",
             \"주문 · 결제\",
             \"문의 · 후기\",
             \"사이트 현황\",
+            \"광고 · 노출 자동화\",
         ]
     )
 
@@ -438,7 +442,9 @@ ADMIN_TABS_REPLACEMENT = """    tab1, tab2, tab3, tab_feedback, tab4 = st.tabs(
     with tab_feedback:
         render_feedback_admin()
     with tab4:
-        render_site_status()"""
+        render_site_status()
+    with tab5:
+        render_marketing_center()"""
 
 BANNER_TARGET = """def banner_image_src():
     if not BANNER_FILE.exists():"""
