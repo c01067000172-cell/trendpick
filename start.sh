@@ -80,7 +80,7 @@ schema = {
 if PHONE:
     schema["telephone"] = PHONE
 
-verification = '<meta name="naver-site-verification" content="9f3ca97a7b93c85fbea2d89bd64466f9e891c066" />\n'
+verification = '<meta name="naver-site-verification" content="86d550058f3b5bd194012845837010461c1fb1fb" />\n'
 metadata = (
     "<title>" + escape(page_title) + "</title>\n"
     + '<meta name="description" content="' + escape(page_description, quote=True) + '" />\n'
