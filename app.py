@@ -3830,6 +3830,27 @@ def render_marketing_center():
         st.error(f"채널 작업본 조회 실패: {exc}")
         return
 
+    st.markdown("#### 실제 게시 주소")
+    any_published_url = False
+    for summary_post in posts:
+        summary_channel = summary_post.get("channel", "")
+        summary_label = marketing.channel_label(summary_channel)
+        summary_url = str(summary_post.get("publish_url") or "").strip()
+        if summary_url:
+            any_published_url = True
+            st.markdown(f"**{summary_label}**")
+            st.code(summary_url, language=None)
+            st.link_button(
+                f"{summary_label} 실제 게시글 열기",
+                summary_url,
+                key=f"marketing_summary_open_{summary_post['id']}",
+                use_container_width=True,
+            )
+        else:
+            st.caption(f"{summary_label}: 아직 실제 게시되지 않아 주소가 없습니다.")
+    if not any_published_url:
+        st.info("현재 실제 게시가 완료된 채널이 없습니다. 작업본 생성만 된 채널에는 게시 주소가 생기지 않습니다.")
+
     for post in posts:
         channel = post.get("channel", "")
         label = marketing.channel_label(channel)
@@ -3978,7 +3999,7 @@ def render_admin():
     if not admin_login():
         return
 
-    st.caption("적용 버전: TWOJROAD-20260919-MKT3")
+    st.caption("적용 버전: TWOJROAD-20260920-MKT4")
     top1, top2 = st.columns(
         [5, 1]
     )
