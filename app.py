@@ -3843,7 +3843,6 @@ def render_marketing_center():
             st.link_button(
                 f"{summary_label} 실제 게시글 열기",
                 summary_url,
-                key=f"marketing_summary_open_{summary_post['id']}",
                 use_container_width=True,
             )
         else:
