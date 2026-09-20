@@ -846,13 +846,50 @@ a {
 }
 
 .footer-block {
-    border-top:1px solid #252525;
+    border-top:1px solid #3a3a3a;
     margin-top:65px;
-    padding:40px 0 15px;
+    padding:38px 24px 22px;
     text-align:center;
-    color:#555;
-    font-size:10px;
-    line-height:1.9;
+    color:#b8b8b8;
+    font-size:13px;
+    font-weight:600;
+    line-height:2.05;
+    letter-spacing:.05px;
+    background:#0d0d0d;
+}
+
+.footer-block > b {
+    color:#f7f7f7;
+    font-size:16px;
+    font-weight:900;
+    letter-spacing:.2px;
+}
+
+.footer-block a {
+    color:#e2e2e2 !important;
+    font-weight:800;
+    text-decoration:underline !important;
+    text-underline-offset:3px;
+}
+
+.footer-block a:hover {
+    color:#ff6900 !important;
+}
+
+.footer-block a b {
+    color:inherit !important;
+}
+
+@media(max-width:600px) {
+    .footer-block {
+        padding:30px 14px 18px;
+        font-size:12px;
+        line-height:1.95;
+    }
+
+    .footer-block > b {
+        font-size:15px;
+    }
 }
 
 div[data-testid="stTextInput"] input,
