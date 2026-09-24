@@ -114,7 +114,7 @@ BANNER_FILE = (
 )
 
 ADMIN_PASSWORD = os.getenv("MASPICK_ADMIN_PASSWORD", "")
-MASPICK_PHONE = os.getenv("MASPICK_PHONE", "").strip()
+MASPICK_PHONE = os.getenv("MASPICK_PHONE", "").strip() or "010-4645-7125"
 MASPICK_KAKAO_URL = os.getenv("MASPICK_KAKAO_URL", "").strip()
 
 
@@ -2221,6 +2221,12 @@ def _product_popup_body(product_id):
             if detail_text:
                 st.text(detail_text)
             render_detail_files(detail_files)
+            if product.get("type") != "bike":
+                st.info(
+                    "배송기간: 주문 및 결제 완료일로부터 3~7영업일 이내에 배송됩니다. "
+                    "주말·공휴일은 제외되며, 도서·산간 지역이나 택배사·재고 사정에 따라 "
+                    "배송이 지연될 수 있습니다."
+                )
 
         if product.get("type") == "bike":
             st.info("중고 바이크는 온라인 결제 없이 매장 방문·전화 상담 후 거래합니다. 아래 버튼으로 문의해 주세요.")
@@ -4191,3 +4197,4 @@ safe_markdown(
     """,
     unsafe_allow_html=True
 )
+

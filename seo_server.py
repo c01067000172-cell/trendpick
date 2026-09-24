@@ -40,7 +40,7 @@ def business_info_html():
     links = ('<a href="/terms">이용약관</a> · <a href="/privacy"><b>개인정보처리방침</b></a> · '
              '<a href="/refund">교환·환불 안내</a>')
     return " · ".join(parts) + "<br>" + line2 + "<br>" + links
-PHONE = os.getenv("MASPICK_PHONE", "").strip()
+PHONE = os.getenv("MASPICK_PHONE", "").strip() or "010-4645-7125"
 LABEL_TO_KIND = {label: kind for kind, label in CATEGORIES.items()}
 
 CATEGORY_INFO = {
@@ -450,6 +450,13 @@ def product_page(p):
             ) + "</ul>"
     body += "".join(image(url, full_name) for url in pics)
     body += f'<div class="text">{esc(text)}</div>'
+    if kind != "bike":
+        body += (
+            '<div class="notice"><strong>배송기간</strong><br>'
+            '주문 및 결제 완료일로부터 3~7영업일 이내에 배송됩니다. '
+            '주말·공휴일은 제외되며, 도서·산간 지역이나 택배사·재고 사정에 따라 '
+            '배송이 지연될 수 있습니다.</div>'
+        )
     for item in files:
         if not isinstance(item, dict):
             continue
@@ -1730,6 +1737,7 @@ def _policy_sections(kind):
             ("11. 시행일", f"이 개인정보처리방침은 {POLICY_EFFECTIVE_DATE}부터 적용됩니다."),
         ]
     return "교환·환불 안내", [
+        ("배송기간", "상품은 주문 및 결제 완료일로부터 3~7영업일 이내에 배송됩니다. 주말·공휴일은 배송기간에서 제외됩니다. 도서·산간 지역, 택배사 사정, 재고 상황 또는 주문제작 상품의 경우 배송이 다소 지연될 수 있으며, 지연이 예상되면 고객에게 별도로 안내드립니다."),
         ("청약철회(반품) 기간", "상품을 받은 날부터 7일 이내에 교환·반품을 신청할 수 있습니다. 상품의 내용이 표시·광고와 다르거나 계약 내용과 다르게 이행된 경우에는 상품을 받은 날부터 3개월 이내, 그 사실을 안 날 또는 알 수 있었던 날부터 30일 이내에 신청할 수 있습니다."),
         ("신청 방법", f"주문번호와 사유를 적어 매장으로 연락해 주세요. {_policy_contact()}"),
         ("교환·반품이 제한되는 경우",
@@ -2255,3 +2263,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
